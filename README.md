@@ -1,10 +1,11 @@
-# A C++ library to compress or expand binary values using Exponential Golomb Encoding
+# A C++ library to encode and decode values using Exponential Golomb Encoding
 
-This library implements [Exponential Golomb Encoding](https://en.wikipedia.org/wiki/Exponential-Golomb_coding) that can compress data with lots of small integeral values.
+This library implements [Exponential Golomb Encoding](https://en.wikipedia.org/wiki/Exponential-Golomb_coding) that can efficiently encode data with lots of small integeral values.
 
-The advantage of the Exponential Golomb Encoding over other compression methods is that it can compress data in a single pass and does not require any buffering of the input or output data.
+The advantage of the Exponential Golomb Encoding over other compression methods is that it can encode data in a single pass and does not require any buffering of the input or output data.
 These properties can make Exponential Golomb Encoding a good fit for applications that are tight on memory usage or require low latencies.
-However due to simplicity the compression may not be as good as achieved by other compression methods.
+
+For better efficiency the data may need preprocessing before encoding to reduce the size of the values, for example with [Delta Encoding](https://en.wikipedia.org/wiki/Delta_encoding).
 
 ## Features
 
@@ -103,7 +104,7 @@ Be sure that `out` can buffer all the data that is decoded from the input.
 
 `k` is the order in which the input data is encoded and _must_ match the order used when encoding the values or else the decoded values are undefined.
 
-#### Endianess
+### Endianess
 
 The functions do not handle endianess in a specific way; this depends on the platform.  
 Use `uint8_t` for encoded input and output data when cross-platform data exchange is required.
