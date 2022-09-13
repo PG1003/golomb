@@ -1,11 +1,11 @@
-# A C++ library to encode and decode values using Exponential Golomb Encoding
+# A C++ library to compress integer values using Exponential Golomb Encoding
 
-This library implements [Exponential Golomb Encoding](https://en.wikipedia.org/wiki/Exponential-Golomb_coding) that can efficiently encode data with lots of small integeral values.
+This library implements [Exponential Golomb Encoding](https://en.wikipedia.org/wiki/Exponential-Golomb_coding) that can efficiently pack data with lots of small integeral values.
 
 The advantage of the Exponential Golomb Encoding over other compression methods is that it can encode data in a single pass and does not require any buffering of the input or output data.
 These properties can make Exponential Golomb Encoding a good fit for applications that are tight on memory usage or require low latencies.
 
-For better efficiency the data may need preprocessing before encoding to reduce the size of the values, for example with [Delta Encoding](https://en.wikipedia.org/wiki/Delta_encoding).
+The data may need preprocessing before encoding to reduce the size of the values for better efficiency, for example with [Delta Encoding](https://en.wikipedia.org/wiki/Delta_encoding).
 
 ## Features
 
@@ -67,7 +67,7 @@ You can build the utility with the provided makefile by running the following ma
 make golomb
 ```
 
-Information about the usage is displayed by running the executable without parameters or with the `-h` option.
+Information about the usage is displayed by running the executable with the `-h` option.
 You can also read the help text that is displayed by the executable from the [source file](https://github.com/PG1003/golomb/blob/main/util/golomb.cpp).
 
 ## Documentation
@@ -83,7 +83,7 @@ Iterators give you the freedom to use raw pointers, iterators from standard cont
 Reads data from `in` until the iterator is equal to last. The encoded data is written to `out`.
 The function returns an `output_iterator` that points to one past the last written data.
 
-The data type returned by the `input_iterator` can be of any size but must be an signed or unsigned integral type, e.g. `unsigned char`, `uint32_t`, `long`, `int8_t`, etc.  
+The data type accessed via the `input_iterator` can be of any size but must be an signed or unsigned integral type, e.g. `unsigned char`, `uint32_t`, `long`, `int8_t`, etc.  
 The `output_iterator` must handle _unsigned_ data. Default is `uint8_t` but can be overridden by the `OutputDataT` template parameter.
 
 `out` must accommodate enough space to buffer the encoded data which may require more space than the input data.
@@ -97,12 +97,12 @@ Reads data values from `in` until the iterator is equal to last. The decoded dat
 The function returns an output_iterator that points to one past the last written decoded value.
 
 The `input_iterator` must dereference to an _unsigned_ data type.
-The underlaying value type of the `output_iterator` is specified by the `OutputValueT` template parameter.
+The value type written to the `output_iterator` is specified by the `OutputValueT` template parameter.
 This parameter must be a signed or an unsigned integer type.
 
 Be sure that `out` can buffer all the data that is decoded from the input.
 
-`k` is the order in which the input data is encoded and _must_ match the order used when encoding the values or else the decoded values are undefined.
+`k` is the order in which the input data is encoded and _must_ match the order used at encoding the values or else the decoded values are undefined.
 
 ### Endianess
 
