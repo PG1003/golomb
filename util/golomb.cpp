@@ -323,11 +323,14 @@ static data_type decode_format_arg( char option, std::string_view fmt )
 
         fmt.remove_prefix( 1u );
 
+        const auto begin = fmt.data();
+        const auto end   = begin + fmt.size();
+
         int        width           = 8;
-        const auto [ pos_ptr, ec ] = std::from_chars( fmt.cbegin(), fmt.cend(), width );
+        const auto [ pos_ptr, ec ] = std::from_chars( begin, end, width );
 
         if( !( signness == 'i' || signness == 'u' ) ||
-            ( pos_ptr == fmt.cbegin() || pos_ptr != fmt.cend() ) ||
+            ( pos_ptr == begin || pos_ptr != end ) ||
             !( width == 8 || width == 16 || width == 32 || width == 63 ) )
         {
             golomb_argument_error( "Invalid argument for option '%c'.", option );
@@ -351,10 +354,14 @@ static data_type decode_format_arg( char option, std::string_view fmt )
 
 static size_t decode_k_arg( std::string_view k )
 {
-    int        order           = 0;
-    const auto [ pos_ptr, ec ] = std::from_chars( k.cbegin(), k.cend(), order );
 
-    if( ( pos_ptr == k.cbegin() || pos_ptr != k.cend() ) ||
+    const auto begin = k.data();
+    const auto end   = begin + k.size();
+
+    int        order           = 0;
+    const auto [ pos_ptr, ec ] = std::from_chars( begin, end, order );
+
+    if( ( pos_ptr == begin || pos_ptr != end ) ||
         ( order < 0 ) )
     {
         golomb_argument_error( "Invalid argument for option 'k'." );
