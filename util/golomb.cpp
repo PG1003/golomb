@@ -436,10 +436,10 @@ static void decode( std::FILE * const in, std::FILE * const out, data_type type,
     switch( type )
     {
     case data_type::int8:
-        pg::golomb::decode< uint8_t >( binary_input_file_iterator< uint8_t >( in ),
-                                       binary_input_file_iterator< uint8_t >(),
-                                       binary_output_file_iterator< int8_t >( out ),
-                                       k );
+        pg::golomb::decode< int8_t >( binary_input_file_iterator< uint8_t >( in ),
+                                      binary_input_file_iterator< uint8_t >(),
+                                      binary_output_file_iterator< int8_t >( out ),
+                                      k );
         break;
 
     case data_type::uint8:
@@ -450,10 +450,10 @@ static void decode( std::FILE * const in, std::FILE * const out, data_type type,
         break;
 
     case data_type::int16:
-        pg::golomb::decode< uint16_t >( binary_input_file_iterator< uint8_t >( in ),
-                                        binary_input_file_iterator< uint8_t >(),
-                                        binary_output_file_iterator< int16_t >( out ),
-                                        k );
+        pg::golomb::decode< int16_t >( binary_input_file_iterator< uint8_t >( in ),
+                                       binary_input_file_iterator< uint8_t >(),
+                                       binary_output_file_iterator< int16_t >( out ),
+                                       k );
         break;
 
     case data_type::uint16:
@@ -464,10 +464,10 @@ static void decode( std::FILE * const in, std::FILE * const out, data_type type,
         break;
 
     case data_type::int32:
-        pg::golomb::decode< uint32_t >( binary_input_file_iterator< uint8_t >( in ),
-                                        binary_input_file_iterator< uint8_t >(),
-                                        binary_output_file_iterator< int32_t >( out ),
-                                        k );
+        pg::golomb::decode< int32_t >( binary_input_file_iterator< uint8_t >( in ),
+                                       binary_input_file_iterator< uint8_t >(),
+                                       binary_output_file_iterator< int32_t >( out ),
+                                       k );
         break;
 
     case data_type::uint32:
@@ -478,10 +478,10 @@ static void decode( std::FILE * const in, std::FILE * const out, data_type type,
         break;
 
     case data_type::int64:
-        pg::golomb::decode< uint64_t >( binary_input_file_iterator< uint8_t >( in ),
-                                        binary_input_file_iterator< uint8_t >(),
-                                        binary_output_file_iterator< int64_t >( out ),
-                                        k );
+        pg::golomb::decode< int64_t >( binary_input_file_iterator< uint8_t >( in ),
+                                       binary_input_file_iterator< uint8_t >(),
+                                       binary_output_file_iterator< int64_t >( out ),
+                                       k );
         break;
 
     case data_type::uint64:
