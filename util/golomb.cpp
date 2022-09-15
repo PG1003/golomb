@@ -377,7 +377,8 @@ static void encode( std::FILE * const in, std::FILE * const out, data_type type,
     case data_type::int8:
         pg::golomb::encode( binary_input_file_iterator< int8_t >( in ),
                             binary_input_file_iterator< int8_t >(),
-                            binary_output_file_iterator< uint8_t >( out ) );
+                            binary_output_file_iterator< uint8_t >( out ),
+                            k );
         break;
 
     case data_type::uint8:
