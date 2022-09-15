@@ -331,7 +331,7 @@ static data_type decode_format_arg( char option, std::string_view fmt )
 
         if( !( signness == 'i' || signness == 'u' ) ||
             ( pos_ptr == begin || pos_ptr != end ) ||
-            !( width == 8 || width == 16 || width == 32 || width == 63 ) )
+            !( width == 8 || width == 16 || width == 32 || width == 64 ) )
         {
             golomb_argument_error( "Invalid argument for option '%c'.", option );
         }
