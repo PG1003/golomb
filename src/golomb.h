@@ -66,6 +66,38 @@ auto to_signed( UnsignedT u )
 }
 
 template< typename IteratorT >
+requires std::signed_integral< typename std::iterator_traits< IteratorT >::value_type >
+struct integer_input_adapter
+{
+    using iterator_category = std::input_iterator_tag;
+    using value_type        = typename std::make_unsigned< typename std::iterator_traits< IteratorT >::value_type >::type;
+    using difference_type   = ptrdiff_t;
+    using pointer           = value_type *;
+    using const_pointer     = const value_type *;
+    using reference         = value_type &;
+    using const_reference   = const value_type &;
+    IteratorT it;
+    integer_input_adapter( const IteratorT & it ) noexcept
+        : it( it )
+    {}
+    integer_input_adapter & operator =( value_type u )
+    {
+        *it = to_signed( u );
+        return *this;
+    }
+    operator value_type() const
+    {
+        return to_unsigned( *it );
+    }
+    [[nodiscard]] const integer_input_adapter & operator *() const noexcept { return *this; }
+    [[nodiscard]] const integer_input_adapter * operator ->() const noexcept { return this; }
+                  integer_input_adapter & operator ++() { ++it; return *this; }
+                  integer_input_adapter   operator ++( int ) { auto self = *this; it++; return self; }
+    [[nodiscard]] bool                    operator ==( const integer_input_adapter &other ) const { return it == other.it; }
+    [[nodiscard]] bool                    operator !=( const integer_input_adapter &other ) const { return it != other.it; }
+};
+
+template< typename IteratorT >
 struct integer_output_adapter
 {
     using iterator_category = std::output_iterator_tag;
@@ -103,19 +135,22 @@ integer_output_adapter( const IteratorT& ) noexcept
 }
 
 template< typename OutputIt, typename OutputDataT = uint8_t >
+requires std::unsigned_integral< OutputDataT >
 class encoder
 {
+    static constexpr auto output_digits = std::numeric_limits< OutputDataT >::digits;
+
     OutputIt     output;
     const size_t k;
     const size_t base;
-    const int zeros_threshold;
+    const int    zeros_threshold;
 
     OutputDataT encoded;
     int         encoded_count;
 
 public:
-    encoder( OutputIt it, size_t k = 0u ) noexcept
-        : output( it )
+    encoder( OutputIt output, size_t k = 0u ) noexcept
+        : output( output )
         , k( k )
         , base( 1u << k )
         , zeros_threshold( 1 + k )
@@ -131,7 +166,6 @@ public:
 
         constexpr auto input_digits  = std::numeric_limits< InputValueT >::digits;
         constexpr auto input_mask    = std::numeric_limits< InputValueT >::max();
-        constexpr auto output_digits = std::numeric_limits< OutputDataT >::digits;
 
         const auto overflow_threshold = std::numeric_limits< InputValueT >::max() - ( static_cast< InputValueT >( base ) );
         const auto max_zeros          = input_digits - k;
@@ -242,98 +276,143 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
     return e.flush();
 }
 
-template< typename OutputValueT,
-          typename InputIt,
-          typename OutputIt >
-requires std::unsigned_integral< OutputValueT > &&
-         std::unsigned_integral< OutputValueT >
-constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
+template< typename OutputIt,
+          typename ValueT >
+requires std::integral< ValueT >
+class decoder
 {
-    using InputDataT = typename std::iterator_traits< InputIt >::value_type;
-    using CommonT    = typename std::common_type< InputDataT, OutputValueT >::type;
+    using IteratorT = typename std::conditional< std::is_signed< ValueT >::value,
+                                                 detail::integer_output_adapter< OutputIt >,
+                                                 OutputIt >::type;
 
-    constexpr auto input_digits  = std::numeric_limits< InputDataT >::digits;
-    constexpr auto input_mask    = std::numeric_limits< InputDataT >::max();
-    constexpr auto output_digits = std::numeric_limits< OutputValueT >::digits;
+    using OutputValueT = typename std::conditional< std::is_signed< ValueT >::value,
+                                                    typename std::make_unsigned< ValueT >::type,
+                                                    ValueT >::type;
 
-    const auto base            = static_cast< OutputValueT >( 1 ) << k;
-    const auto initital_digits = 1 + static_cast< int >( k );
+    static constexpr auto output_digits = std::numeric_limits< OutputValueT >::digits;
 
-    InputDataT   input_buffer          = 0u;
-    int          input_buffer_consumed = input_digits;
-    OutputValueT output_buffer         = 0u;
-    int          digits                = initital_digits;
-
+    IteratorT    output;
+    const size_t k;
+    const size_t base;
+    const int    initial_digits;
+    
+    OutputValueT output_buffer;
+    int          digits;
+    
     enum { scan_zeros, decode } state = scan_zeros;
 
-    while( input_buffer_consumed != input_digits || input != last )
+public:
+    decoder( OutputIt output, size_t k = 0u )
+        : output( output )
+        , k( k )
+        , base( static_cast< OutputValueT >( 1 ) << k )
+        , initial_digits( 1 + static_cast< int >( k ) )
+        , output_buffer( 0u )
+        , digits( initial_digits )
+        , state( scan_zeros )
+    {}
+
+    template< typename InputDataT >
+    requires std::unsigned_integral< InputDataT >
+    OutputIt push( InputDataT input )
     {
-        if( input_buffer_consumed == input_digits && input != last )
+        using CommonT = typename std::common_type< InputDataT, OutputValueT >::type;
+
+        constexpr auto input_digits  = std::numeric_limits< InputDataT >::digits;
+        constexpr auto input_mask    = std::numeric_limits< InputDataT >::max();
+
+        int input_consumed = 0;
+        while( input_consumed != input_digits )
         {
-            input_buffer          = *input++;
-            input_buffer_consumed = 0;
-        }
-
-        if( state == scan_zeros )
-        {
-            const auto n = std::countl_zero( input_buffer );
-
-            digits                += n - input_buffer_consumed;
-            input_buffer_consumed  = n;
-
-            if( input_buffer )
+            if( state == scan_zeros )
             {
-                state = decode;
-            }
-        }
-        else    // decode
-        {
-            const auto input_buffer_remaining = input_digits - input_buffer_consumed;
+                const auto n = std::countl_zero( input );
 
-            if( digits >= input_buffer_remaining )
-            {
-                const auto shift = digits - input_buffer_remaining;
+                digits         += n - input_consumed;
+                input_consumed  = n;
 
-                if( shift < output_digits )
+                if( input )
                 {
-                    output_buffer |= static_cast< CommonT >( input_buffer ) << shift;
+                    state = decode;
+                }
+            }
+            else    // decode
+            {
+                const auto input_remaining = input_digits - input_consumed;
+
+                if( digits >= input_remaining )
+                {
+                    const auto shift = digits - input_remaining;
+
+                    if( shift < output_digits )
+                    {
+                        output_buffer |= static_cast< CommonT >( input ) << shift;
+                    }
+
+                    input_consumed  = input_digits;
+                    digits         -= input_remaining;
+                }
+                else
+                {
+                    const auto shift = input_remaining - digits;
+
+                    output_buffer  |= input >> shift;
+                    input_consumed += digits;
+                    input          &= input_mask >> input_consumed;
+                    digits          = 0u;
                 }
 
-                input_buffer_consumed  = input_digits;
-                digits                -= input_buffer_remaining;
+                if( digits == 0u )
+                {
+                    *output++     = static_cast< OutputValueT >( output_buffer - base );
+                    output_buffer = 0u;
+                    digits        = initial_digits;
+                    state         = scan_zeros;
+                }
             }
-            else
-            {
-                const auto shift = input_buffer_remaining - digits;
+        }
 
-                output_buffer         |= input_buffer >> shift;
-                input_buffer_consumed += digits;
-                input_buffer          &= input_mask >> input_buffer_consumed;
-                digits                 = 0u;
-            }
-
-            if( digits == 0u )
-            {
-                *output++     = static_cast< OutputValueT >( output_buffer - base );
-                output_buffer = 0u;
-                digits        = initital_digits;
-                state         = scan_zeros;
-            }
+        if constexpr( std::is_signed< ValueT >::value )
+        {
+            return output.it;
+        }
+        else
+        {
+            return output;
         }
     }
 
-    return output;
-}
+    OutputIt flush()
+    {
+        output_buffer = 0u;
+        digits        = initial_digits;
+        state         = scan_zeros;
+        
+        if constexpr( std::is_signed< ValueT >::value )
+        {
+            return output.it;
+        }
+        else
+        {
+            return output;
+        }
+    }
+};
 
 template< typename OutputValueT,
           typename InputIt,
           typename OutputIt >
-requires std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > &&
-         std::signed_integral< OutputValueT >
-constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u ) -> OutputIt
+requires std::integral< OutputValueT >
+constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
-    using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
-    return decode< UnsignedOutputValueT >( input, last, detail::integer_output_adapter( output ), k ).it;
+    decoder< OutputIt, OutputValueT > d( output, k );
+
+    while( input != last )
+    {
+        d.push( *input++ );
+    }
+
+    return d.flush();
 }
 
 }

@@ -96,21 +96,23 @@ static void encode_wide_to_narrow_k3()
 
     pg::golomb::encode( values.cbegin(), values.cend(), std::back_inserter( result ), 3u );
 
-    //assert_same( result.size(), 9u );
-    //assert_same( result[ 0 ], 0x80u );
-    //assert_same( result[ 1 ], 0x00u );
-    //assert_same( result[ 2 ], 0x00u );
-    //assert_same( result[ 3 ], 0x00u );
-    //assert_same( result[ 4 ], 0x40u );
-    //assert_same( result[ 5 ], 0x00u );
-    //assert_same( result[ 6 ], 0x00u );
-    //assert_same( result[ 7 ], 0x00u );
-    //assert_same( result[ 8 ], 0x00u );
-
-    std::array< int32_t, 2 > decoded = { 1, 0 };
-    pg::golomb::decode< int32_t >( result.cbegin(), result.cend(), decoded.begin(), 3u );
-
-    assert_same( decoded.size(), 2u );
+    assert_same( result.size(), 16u );
+    assert_same( result[  0 ], 0x00u );
+    assert_same( result[  1 ], 0x00u );
+    assert_same( result[  2 ], 0x00u );
+    assert_same( result[  3 ], 0x04u );
+    assert_same( result[  4 ], 0x00u );
+    assert_same( result[  5 ], 0x00u );
+    assert_same( result[  6 ], 0x00u );
+    assert_same( result[  7 ], 0x10u );
+    assert_same( result[  8 ], 0x00u );
+    assert_same( result[  9 ], 0x00u );
+    assert_same( result[ 10 ], 0x00u );
+    assert_same( result[ 11 ], 0x10u );
+    assert_same( result[ 12 ], 0x00u );
+    assert_same( result[ 13 ], 0x00u );
+    assert_same( result[ 14 ], 0x00u );
+    assert_same( result[ 15 ], 0x60u );
 }
 
 static void decode_all_zeros_k0()
