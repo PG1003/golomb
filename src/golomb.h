@@ -153,6 +153,7 @@ requires std::unsigned_integral< typename std::iterator_traits< InputIt >::value
 constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     using InputValueT = typename std::iterator_traits< InputIt >::value_type;
+    using CommonT     = typename std::common_type< InputValueT, OutputDataT >::type;
 
     constexpr auto input_digits  = std::numeric_limits< InputValueT >::digits;
     constexpr auto input_mask    = std::numeric_limits< InputValueT >::max();
@@ -186,21 +187,30 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
         {
             const auto shift = output_digits - ( 1 + encoded_count );
 
-            encoded |= 1u << shift;
-            ++encoded_count;
+            if( shift < output_digits )
+            {
+
+                encoded |= static_cast< CommonT >( 1u ) << shift;
+                if( ++encoded_count == output_digits )
+                {
+                    *output++     = encoded;
+                    encoded       = 0u;
+                    encoded_count = 0;
+                }
+            }
         }
 
         for( auto remaining = width ; remaining > 0 ; )
         {
             const auto mask = input_mask >> ( input_digits - remaining );
-            const auto data = value & mask;
+            const auto data = static_cast< CommonT >( value & mask );
             const auto free = output_digits - encoded_count;
 
             if( remaining >= free )
             {
                 const auto shift = remaining - free;
 
-                *output++     = encoded | static_cast< OutputDataT >( data >> shift );
+                *output++     = encoded | data >> shift;
                 encoded       = 0u;
                 encoded_count = 0;
                 remaining     = shift;
@@ -209,7 +219,7 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
             {
                 const auto shift = free - remaining;
 
-                encoded       |= static_cast< OutputDataT >( data ) << shift;
+                encoded       |= data << shift;
                 encoded_count += remaining;
                 remaining      = 0;
             }
@@ -237,14 +247,16 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
 template< typename OutputValueT,
           typename InputIt,
           typename OutputIt >
-requires std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > &&
+requires std::unsigned_integral< OutputValueT > &&
          std::unsigned_integral< OutputValueT >
 constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     using InputDataT = typename std::iterator_traits< InputIt >::value_type;
+    using CommonT    = typename std::common_type< InputDataT, OutputValueT >::type;
 
-    constexpr auto input_digits = std::numeric_limits< InputDataT >::digits;
-    constexpr auto input_mask   = std::numeric_limits< InputDataT >::max();
+    constexpr auto input_digits  = std::numeric_limits< InputDataT >::digits;
+    constexpr auto input_mask    = std::numeric_limits< InputDataT >::max();
+    constexpr auto output_digits = std::numeric_limits< OutputValueT >::digits;
 
     const auto base            = static_cast< OutputValueT >( 1 ) << k;
     const auto initital_digits = 1 + static_cast< int >( k );
@@ -284,7 +296,11 @@ constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 
             {
                 const auto shift = digits - input_buffer_remaining;
 
-                output_buffer         |= input_buffer << shift;
+                if( shift < output_digits )
+                {
+                    output_buffer |= static_cast< CommonT >( input_buffer ) << shift;
+                }
+
                 input_buffer_consumed  = input_digits;
                 digits                -= input_buffer_remaining;
             }

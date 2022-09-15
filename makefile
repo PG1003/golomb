@@ -70,6 +70,38 @@ run_tests: test golomb
 	@echo "Running tests..."
 	@echo "> Generic tests"
 	@cd $(OBJDIR); ./test && : || { echo ">>> Generic tests failed!"; exit 1; }
+	@echo "> Roundtrip unsigned 8"
+	@cd $(OBJDIR); ./golomb -eu8 -k0 ../$(TESTDIR)/u8.bin u8.egc && : || { echo ">>> golomb encode u8 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -du8 -k0 u8.egc u8.bin && : || { echo ">>> golomb decode u8 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/u8.bin u8.bin && : || { echo ">>> Roundtrip u8 failed!";  exit 1; }
+	@echo "> Roundtrip signed 8"
+	@cd $(OBJDIR); ./golomb -ei8 -k1 ../$(TESTDIR)/i8.bin i8.egc && : || { echo ">>> golomb encode i8 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -di8 -k1 i8.egc i8.bin && : || { echo ">>> golomb decode i8 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/i8.bin i8.bin && : || { echo ">>> Roundtrip i8 failed!";  exit 1; }
+	@echo "> Roundtrip unsigned 16"
+	@cd $(OBJDIR); ./golomb -eu16 -k2 ../$(TESTDIR)/u16.bin u16.egc && : || { echo ">>> golomb encode u16 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -du16 -k2 u16.egc u16.bin && : || { echo ">>> golomb decode u16 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/u16.bin u16.bin && : || { echo ">>> Roundtrip u16 failed!";  exit 1; }
+	@echo "> Roundtrip signed 16"
+	@cd $(OBJDIR); ./golomb -ei16 -k0 ../$(TESTDIR)/i16.bin i16.egc && : || { echo ">>> golomb encode i16 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -di16 -k0 i16.egc i16.bin && : || { echo ">>> golomb decode i16 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/i16.bin i16.bin && : || { echo ">>> Roundtrip i16 failed!";  exit 1; }
+	@echo "> Roundtrip unsigned 32"
+	@cd $(OBJDIR); ./golomb -eu32 -k0 ../$(TESTDIR)/u32.bin u32.egc && : || { echo ">>> golomb encode u32 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -du32 -k0 u32.egc u32.bin && : || { echo ">>> golomb decode u32 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/u32.bin u32.bin && : || { echo ">>> Roundtrip u32 failed!";  exit 1; }
+	@echo "> Roundtrip signed 32"
+	@cd $(OBJDIR); ./golomb -ei32 -k3 ../$(TESTDIR)/i32.bin i32.egc && : || { echo ">>> golomb encode i32 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -di32 -k3 i32.egc i32.bin && : || { echo ">>> golomb decode i32 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/i32.bin i32.bin && : || { echo ">>> Roundtrip i32 failed!";  exit 1; }
+	@echo "> Roundtrip unsigned 64"
+	@cd $(OBJDIR); ./golomb -eu64 -k4 ../$(TESTDIR)/u64.bin u64.egc && : || { echo ">>> golomb encode u64 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -du64 -k4 u64.egc u64.bin && : || { echo ">>> golomb decode u64 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/u64.bin u64.bin && : || { echo ">>> Roundtrip u64 failed!";  exit 1; }
+	@echo "> Roundtrip signed 64"
+	@cd $(OBJDIR); ./golomb -ei64 -k0 ../$(TESTDIR)/i64.bin i64.egc && : || { echo ">>> golomb encode i64 failed!";  exit 1; }
+	@cd $(OBJDIR); ./golomb -di64 -k0 i64.egc i64.bin && : || { echo ">>> golomb decode i64 failed!";  exit 1; }
+	@cd $(OBJDIR); cmp -s ../$(TESTDIR)/i64.bin i64.bin && : || { echo ">>> Roundtrip i64 failed!";  exit 1; }
 	@echo ""
 	@echo "...tests completed"
 	@echo "      _"

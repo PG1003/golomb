@@ -89,6 +89,30 @@ static void encode_wide_to_narrow_k0()
     assert_same( result[ 8 ], 0x00u );
 }
 
+static void encode_wide_to_narrow_k3()
+{
+    const std::array< int32_t, 2 > values = { 2147483646, 2147483647 };
+    std::vector< uint8_t >          result;
+
+    pg::golomb::encode( values.cbegin(), values.cend(), std::back_inserter( result ), 3u );
+
+    //assert_same( result.size(), 9u );
+    //assert_same( result[ 0 ], 0x80u );
+    //assert_same( result[ 1 ], 0x00u );
+    //assert_same( result[ 2 ], 0x00u );
+    //assert_same( result[ 3 ], 0x00u );
+    //assert_same( result[ 4 ], 0x40u );
+    //assert_same( result[ 5 ], 0x00u );
+    //assert_same( result[ 6 ], 0x00u );
+    //assert_same( result[ 7 ], 0x00u );
+    //assert_same( result[ 8 ], 0x00u );
+
+    std::array< int32_t, 2 > decoded = { 1, 0 };
+    pg::golomb::decode< int32_t >( result.cbegin(), result.cend(), decoded.begin(), 3u );
+
+    assert_same( decoded.size(), 2u );
+}
+
 static void decode_all_zeros_k0()
 {
     const std::array< uint8_t, 1 > data = { 0xFFu };
@@ -218,6 +242,7 @@ int main()
     encode_overflow_k2();
     encode_narrow_to_wide_k0();
     encode_wide_to_narrow_k0();
+    encode_wide_to_narrow_k3();
     decode_all_zeros_k0();
     decode_overflow_k0();
     decode_overflow_k2();
