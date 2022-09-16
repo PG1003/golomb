@@ -181,24 +181,6 @@ static void decode_wide_to_narrow_k0()
     assert_same( result[ 1 ], 0xFFu );
 }
 
-static void integer_output_adapter()
-{
-    const std::array< uint8_t, 7 > values = { 0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0xFEu, 0xFFu };
-    std::array< int8_t, 7 >        result = {};
-
-    std::copy( values.cbegin(),
-               values.cend(),
-               pg::golomb::detail::integer_output_adapter( result.begin() ) );
-
-    assert_same( result[ 0 ],    0 );
-    assert_same( result[ 1 ],   -1 );
-    assert_same( result[ 2 ],    1 );
-    assert_same( result[ 3 ],   -2 );
-    assert_same( result[ 4 ],    2 );
-    assert_same( result[ 5 ],  127 );
-    assert_same( result[ 6 ], -128 );
-}
-
 static void readme()
 {
     {
@@ -232,7 +214,6 @@ int main()
     decode_overflow_k2();
     decode_narrow_to_wide_k0();
     decode_wide_to_narrow_k0();
-    integer_output_adapter();
     readme();
 
     std::cout << "Total tests: " << total_checks << ", Tests failed: " << failed_checks << '\n';

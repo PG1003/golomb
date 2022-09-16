@@ -24,7 +24,6 @@
 
 #include <cstdint>
 #include <concepts>
-#include <algorithm>
 #include <limits>
 #include <iterator>
 #include <bit>
@@ -58,54 +57,27 @@ auto to_unsigned( UnsignedT u )
     return u;
 }
 
-template< typename UnsignedT >
-requires std::unsigned_integral< UnsignedT >
-auto to_signed( UnsignedT u )
+template< typename SignedT >
+requires std::signed_integral< SignedT >
+auto to_integral( std::unsigned_integral auto u )
 {
-    using SignedT = typename std::make_signed< UnsignedT >::type;
+    using UnsignedT = typename std::make_unsigned< SignedT >::type;
 
-    if( u & 0x01u )
+    const auto U = static_cast< UnsignedT >( u );
+    if( U & 0x01u )
     {
-        return static_cast< SignedT >( ~( u >> 1 ) );
+        return static_cast< SignedT >( ~( U >> 1 ) );
     }
 
-    return static_cast< SignedT >( u >> 1 );
+    return static_cast< SignedT >( U >> 1 );
 }
 
-template< typename IteratorT >
-struct integer_output_adapter
+template< typename UnsignedT >
+requires std::unsigned_integral< UnsignedT >
+auto to_integral( std::unsigned_integral auto u )
 {
-    using iterator_category = std::output_iterator_tag;
-    using value_type        = void;
-    using difference_type   = ptrdiff_t;
-    using pointer           = void;
-    using reference         = void;
-
-    IteratorT it;
-
-    integer_output_adapter( const IteratorT & it ) noexcept
-        : it( it )
-    {}
-
-    template< typename UnsignedT >
-    requires std::unsigned_integral< UnsignedT >
-    integer_output_adapter & operator =( UnsignedT u )
-    {
-        *it = to_signed( u );
-        return *this;
-    }
-
-    [[nodiscard]] integer_output_adapter & operator *() noexcept { return *this; }
-    [[nodiscard]] integer_output_adapter * operator ->() noexcept { return this; }
-                  integer_output_adapter & operator ++() { ++it; return *this; }
-                  integer_output_adapter   operator ++( int ) { auto self = *this; it++; return self; }
-    [[nodiscard]] bool                     operator ==( const integer_output_adapter &other ) const { return it == other.it; }
-    [[nodiscard]] bool                     operator !=( const integer_output_adapter &other ) const { return it != other.it; }
-};
-
-template< typename IteratorT >
-integer_output_adapter( const IteratorT& ) noexcept
--> integer_output_adapter< IteratorT >;
+    return static_cast< UnsignedT >( u );
+}
 
 }
 
@@ -133,25 +105,22 @@ public:
         , encoded_count( 0 )
     {}
 
-    template< typename ValueT >
-    requires std::integral< ValueT >
-    OutputIt push( ValueT x )
+    template< typename InputValueT >
+    requires std::integral< InputValueT >
+    OutputIt push( InputValueT x )
     {
-        using InputValueT = typename std::conditional< std::is_signed< ValueT >::value,
-                                                       typename std::make_unsigned< ValueT >::type,
-                                                       ValueT >::type;
+        using UnsignedInputValueT = typename std::make_unsigned< InputValueT >::type;
+        using CommonT             = typename std::common_type< UnsignedInputValueT, OutputDataT >::type;
 
-        using CommonT = typename std::common_type< InputValueT, OutputDataT >::type;
+        constexpr auto input_digits  = std::numeric_limits< UnsignedInputValueT >::digits;
+        constexpr auto input_mask    = std::numeric_limits< UnsignedInputValueT >::max();
 
-        constexpr auto input_digits  = std::numeric_limits< InputValueT >::digits;
-        constexpr auto input_mask    = std::numeric_limits< InputValueT >::max();
-
-        const auto overflow_threshold = std::numeric_limits< InputValueT >::max() - ( static_cast< InputValueT >( base ) );
+        const auto overflow_threshold = std::numeric_limits< UnsignedInputValueT >::max() - ( static_cast< OutputDataT >( base ) );
         const auto max_zeros          = input_digits - k;
 
         const auto u         = detail::to_unsigned( x );
         const bool overflow  = u > overflow_threshold;
-        const auto value     = static_cast< InputValueT >( u + base );
+        const auto value     = static_cast< UnsignedInputValueT >( u + base );
         const int  bit_width = static_cast< int >( std::bit_width( value ) ); // cast is a workaround for unresolved defect report in GCC/libc++
         const int  width     = overflow ? input_digits : bit_width;
         const int  zeros     = overflow ? max_zeros : width - zeros_threshold;
@@ -183,7 +152,7 @@ public:
         for( auto remaining = width ; remaining > 0 ; )
         {
             const auto mask = input_mask >> ( input_digits - remaining );
-            const auto data = static_cast< InputValueT >( value & mask );
+            const auto data = static_cast< UnsignedInputValueT >( value & mask );
             const auto free = output_digits - encoded_count;
 
             if( remaining >= free )
@@ -239,27 +208,21 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
     return e.flush();
 }
 
-template< typename OutputIt, typename ValueT >
-requires std::integral< ValueT >
+template< typename OutputIt, typename OutputValueT >
+requires std::integral< OutputValueT >
 class decoder
 {
-    using IteratorT = typename std::conditional< std::is_signed< ValueT >::value,
-                                                 detail::integer_output_adapter< OutputIt >,
-                                                 OutputIt >::type;
+    using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
 
-    using OutputValueT = typename std::conditional< std::is_signed< ValueT >::value,
-                                                    typename std::make_unsigned< ValueT >::type,
-                                                    ValueT >::type;
+    static constexpr auto output_digits = std::numeric_limits< UnsignedOutputValueT >::digits;
 
-    static constexpr auto output_digits = std::numeric_limits< OutputValueT >::digits;
-
-    IteratorT    output;
+    OutputIt     output;
     const size_t k;
     const size_t base;
     const int    initial_digits;
     
-    OutputValueT output_buffer;
-    int          digits;
+    UnsignedOutputValueT output_buffer;
+    int                  digits;
     
     enum { scan_zeros, decode } state = scan_zeros;
 
@@ -267,7 +230,7 @@ public:
     decoder( OutputIt output, size_t k = 0u )
         : output( output )
         , k( k )
-        , base( static_cast< OutputValueT >( 1 ) << k )
+        , base( static_cast< UnsignedOutputValueT >( 1 ) << k )
         , initial_digits( 1 + static_cast< int >( k ) )
         , output_buffer( 0u )
         , digits( initial_digits )
@@ -278,7 +241,7 @@ public:
     requires std::unsigned_integral< InputDataT >
     OutputIt push( InputDataT input )
     {
-        using CommonT = typename std::common_type< InputDataT, OutputValueT >::type;
+        using CommonT = typename std::common_type< InputDataT, UnsignedOutputValueT >::type;
 
         constexpr auto input_digits  = std::numeric_limits< InputDataT >::digits;
         constexpr auto input_mask    = std::numeric_limits< InputDataT >::max();
@@ -326,7 +289,7 @@ public:
 
                 if( digits == 0u )
                 {
-                    *output++     = static_cast< OutputValueT >( output_buffer - base );
+                    *output++     = detail::to_integral< OutputValueT >( output_buffer - base );
                     output_buffer = 0u;
                     digits        = initial_digits;
                     state         = scan_zeros;
@@ -334,14 +297,7 @@ public:
             }
         }
 
-        if constexpr( std::is_signed< ValueT >::value )
-        {
-            return output.it;
-        }
-        else
-        {
-            return output;
-        }
+        return output;
     }
 
     OutputIt flush()
@@ -350,14 +306,7 @@ public:
         digits        = initial_digits;
         state         = scan_zeros;
         
-        if constexpr( std::is_signed< ValueT >::value )
-        {
-            return output.it;
-        }
-        else
-        {
-            return output;
-        }
+        return output;
     }
 };
 
