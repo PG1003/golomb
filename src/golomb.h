@@ -53,6 +53,13 @@ auto to_unsigned( SignedT s )
 
 template< typename UnsignedT >
 requires std::unsigned_integral< UnsignedT >
+auto to_unsigned( UnsignedT u )
+{
+    return u;
+}
+
+template< typename UnsignedT >
+requires std::unsigned_integral< UnsignedT >
 auto to_signed( UnsignedT u )
 {
     using SignedT = typename std::make_signed< UnsignedT >::type;
@@ -64,38 +71,6 @@ auto to_signed( UnsignedT u )
 
     return static_cast< SignedT >( u >> 1 );
 }
-
-template< typename IteratorT >
-requires std::signed_integral< typename std::iterator_traits< IteratorT >::value_type >
-struct integer_input_adapter
-{
-    using iterator_category = std::input_iterator_tag;
-    using value_type        = typename std::make_unsigned< typename std::iterator_traits< IteratorT >::value_type >::type;
-    using difference_type   = ptrdiff_t;
-    using pointer           = value_type *;
-    using const_pointer     = const value_type *;
-    using reference         = value_type &;
-    using const_reference   = const value_type &;
-    IteratorT it;
-    integer_input_adapter( const IteratorT & it ) noexcept
-        : it( it )
-    {}
-    integer_input_adapter & operator =( value_type u )
-    {
-        *it = to_signed( u );
-        return *this;
-    }
-    operator value_type() const
-    {
-        return to_unsigned( *it );
-    }
-    [[nodiscard]] const integer_input_adapter & operator *() const noexcept { return *this; }
-    [[nodiscard]] const integer_input_adapter * operator ->() const noexcept { return this; }
-                  integer_input_adapter & operator ++() { ++it; return *this; }
-                  integer_input_adapter   operator ++( int ) { auto self = *this; it++; return self; }
-    [[nodiscard]] bool                    operator ==( const integer_input_adapter &other ) const { return it == other.it; }
-    [[nodiscard]] bool                    operator !=( const integer_input_adapter &other ) const { return it != other.it; }
-};
 
 template< typename IteratorT >
 struct integer_output_adapter
@@ -158,10 +133,14 @@ public:
         , encoded_count( 0 )
     {}
 
-    template< typename InputValueT >
-    requires std::unsigned_integral< InputValueT >
-    OutputIt push( InputValueT x )
+    template< typename ValueT >
+    requires std::integral< ValueT >
+    OutputIt push( ValueT x )
     {
+        using InputValueT = typename std::conditional< std::is_signed< ValueT >::value,
+                                                       typename std::make_unsigned< ValueT >::type,
+                                                       ValueT >::type;
+
         using CommonT = typename std::common_type< InputValueT, OutputDataT >::type;
 
         constexpr auto input_digits  = std::numeric_limits< InputValueT >::digits;
@@ -170,8 +149,9 @@ public:
         const auto overflow_threshold = std::numeric_limits< InputValueT >::max() - ( static_cast< InputValueT >( base ) );
         const auto max_zeros          = input_digits - k;
 
-        const bool overflow  = x > overflow_threshold;
-        const auto value     = static_cast< InputValueT >( x + base );
+        const auto u         = detail::to_unsigned( x );
+        const bool overflow  = u > overflow_threshold;
+        const auto value     = static_cast< InputValueT >( u + base );
         const int  bit_width = static_cast< int >( std::bit_width( value ) ); // cast is a workaround for unresolved defect report in GCC/libc++
         const int  width     = overflow ? input_digits : bit_width;
         const int  zeros     = overflow ? max_zeros : width - zeros_threshold;
@@ -243,41 +223,23 @@ public:
 template< typename OutputDataT = uint8_t,
           typename InputIt,
           typename OutputIt >
-requires std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > &&
+requires std::integral< typename std::iterator_traits< InputIt >::value_type > &&
          std::unsigned_integral< OutputDataT >
 constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
-    using InputValueT = typename std::iterator_traits< InputIt >::value_type;
+    using ValueT = typename std::iterator_traits< InputIt >::value_type;
 
     encoder< OutputIt, OutputDataT > e( output, k );
 
     while( input != last )
     {
-        e.push( static_cast< InputValueT >( *input++ ) );
+        e.push( static_cast< ValueT >( *input++ ) );
     }
 
     return e.flush();
 }
 
-template< typename OutputDataT = uint8_t,
-          typename InputIt,
-          typename OutputIt >
-requires std::signed_integral< typename std::iterator_traits< InputIt >::value_type > &&
-         std::unsigned_integral< OutputDataT >
-constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
-{
-    encoder< OutputIt, OutputDataT > e( output, k );
-
-    while( input != last )
-    {
-        e.push( detail::to_unsigned( *input++ ) );
-    }
-
-    return e.flush();
-}
-
-template< typename OutputIt,
-          typename ValueT >
+template< typename OutputIt, typename ValueT >
 requires std::integral< ValueT >
 class decoder
 {
@@ -402,7 +364,8 @@ public:
 template< typename OutputValueT,
           typename InputIt,
           typename OutputIt >
-requires std::integral< OutputValueT >
+requires std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > &&
+         std::integral< OutputValueT >
 constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     decoder< OutputIt, OutputValueT > d( output, k );
