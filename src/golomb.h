@@ -33,11 +33,16 @@
 namespace pg::golomb
 {
 
+template<typename InputIt>
+concept integral_iterator = std::integral< typename std::iterator_traits< InputIt >::value_type >;
+
+template<typename InputIt>
+concept unsigned_integral_iterator = std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type >;
+
 namespace detail
 {
 
-template< typename SignedT >
-requires std::signed_integral< SignedT >
+template< std::signed_integral SignedT >
 auto to_unsigned( SignedT s )
 {
     using UnsignedT = typename std::make_unsigned< SignedT >::type;
@@ -50,15 +55,13 @@ auto to_unsigned( SignedT s )
     return static_cast< UnsignedT >( s << 1 );
 }
 
-template< typename UnsignedT >
-requires std::unsigned_integral< UnsignedT >
+template< std::unsigned_integral UnsignedT >
 auto to_unsigned( UnsignedT u )
 {
     return u;
 }
 
-template< typename SignedT >
-requires std::signed_integral< SignedT >
+template< std::signed_integral SignedT >
 auto to_integral( std::unsigned_integral auto u )
 {
     using UnsignedT = typename std::make_unsigned< SignedT >::type;
@@ -72,8 +75,7 @@ auto to_integral( std::unsigned_integral auto u )
     return static_cast< SignedT >( U >> 1 );
 }
 
-template< typename UnsignedT >
-requires std::unsigned_integral< UnsignedT >
+template< std::unsigned_integral UnsignedT >
 auto to_integral( std::unsigned_integral auto u )
 {
     return static_cast< UnsignedT >( u );
@@ -81,8 +83,7 @@ auto to_integral( std::unsigned_integral auto u )
 
 }
 
-template< typename OutputIt, typename OutputDataT = uint8_t >
-requires std::unsigned_integral< OutputDataT >
+template< typename OutputIt, std::unsigned_integral OutputDataT = uint8_t >
 class encoder
 {
     static constexpr auto output_digits = std::numeric_limits< OutputDataT >::digits;
@@ -96,26 +97,25 @@ class encoder
     int         encoded_count;
 
 public:
-    encoder( OutputIt output, size_t k = 0u ) noexcept
-        : output( output )
-        , k( k )
-        , base( 1u << k )
-        , zeros_threshold( 1 + k )
+    encoder( OutputIt output_in, size_t k_in = 0u ) noexcept
+        : output( output_in )
+        , k( k_in)
+        , base( 1u << k_in)
+        , zeros_threshold( 1 + k_in)
         , encoded( static_cast< OutputDataT>( 0u ) )
         , encoded_count( 0 )
     {}
 
-    template< typename InputValueT >
-    requires std::integral< InputValueT >
+    template< std::integral InputValueT >
     OutputIt push( InputValueT x )
     {
         using UnsignedInputValueT = typename std::make_unsigned< InputValueT >::type;
         using CommonT             = typename std::common_type< UnsignedInputValueT, OutputDataT >::type;
 
-        constexpr auto input_digits  = std::numeric_limits< UnsignedInputValueT >::digits;
-        constexpr auto input_mask    = std::numeric_limits< UnsignedInputValueT >::max();
+        static constexpr auto input_digits  = std::numeric_limits< UnsignedInputValueT >::digits;
+        static constexpr auto input_mask    = std::numeric_limits< UnsignedInputValueT >::max();
 
-        const auto overflow_threshold = std::numeric_limits< UnsignedInputValueT >::max() - ( static_cast< OutputDataT >( base ) );
+        const auto overflow_threshold = input_mask - ( static_cast< OutputDataT >( base ) );
         const auto max_zeros          = input_digits - k;
 
         const auto u         = detail::to_unsigned( x );
@@ -123,13 +123,13 @@ public:
         const auto value     = static_cast< UnsignedInputValueT >( u + base );
         const int  bit_width = static_cast< int >( std::bit_width( value ) ); // cast is a workaround for unresolved defect report in GCC/libc++
         const int  width     = overflow ? input_digits : bit_width;
-        const int  zeros     = overflow ? max_zeros : width - zeros_threshold;
+        const int  zeros     = overflow ? max_zeros : (width - zeros_threshold);
 
         encoded_count += zeros;
         for( ; encoded_count >= output_digits ; encoded_count -= output_digits )
         {
             *output++ = encoded;
-            encoded   = 0;
+            encoded   = 0u;
         }
 
         if( overflow )
@@ -189,11 +189,9 @@ public:
     }
 };
 
-template< typename OutputDataT = uint8_t,
-          typename InputIt,
+template< std::unsigned_integral OutputDataT = uint8_t,
+          integral_iterator InputIt,
           typename OutputIt >
-requires std::integral< typename std::iterator_traits< InputIt >::value_type > &&
-         std::unsigned_integral< OutputDataT >
 constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     using ValueT = typename std::iterator_traits< InputIt >::value_type;
@@ -208,8 +206,7 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
     return e.flush();
 }
 
-template< typename OutputIt, typename OutputValueT >
-requires std::integral< OutputValueT >
+template< typename OutputIt, std::integral OutputValueT >
 class decoder
 {
     using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
@@ -224,7 +221,7 @@ class decoder
     UnsignedOutputValueT output_buffer;
     int                  digits;
     
-    enum { scan_zeros, decode } state = scan_zeros;
+    enum class scan_state { scan_zeros, decode } state = scan_zeros;
 
 public:
     decoder( OutputIt output, size_t k = 0u )
@@ -234,11 +231,10 @@ public:
         , initial_digits( 1 + static_cast< int >( k ) )
         , output_buffer( 0u )
         , digits( initial_digits )
-        , state( scan_zeros )
+        , state(scan_state::scan_zeros )
     {}
 
-    template< typename InputDataT >
-    requires std::unsigned_integral< InputDataT >
+    template< std::unsigned_integral InputDataT >
     OutputIt push( InputDataT input )
     {
         using CommonT = typename std::common_type< InputDataT, UnsignedOutputValueT >::type;
@@ -249,7 +245,7 @@ public:
         int input_consumed = 0;
         while( input_consumed != input_digits )
         {
-            if( state == scan_zeros )
+            if( state == scan_state::scan_zeros )
             {
                 const auto n = std::countl_zero( input );
 
@@ -258,7 +254,7 @@ public:
 
                 if( input )
                 {
-                    state = decode;
+                    state = scan_state::decode;
                 }
             }
             else    // decode
@@ -292,7 +288,7 @@ public:
                     *output++     = detail::to_integral< OutputValueT >( output_buffer - base );
                     output_buffer = 0u;
                     digits        = initial_digits;
-                    state         = scan_zeros;
+                    state         = scan_state::scan_zeros;
                 }
             }
         }
@@ -304,17 +300,15 @@ public:
     {
         output_buffer = 0u;
         digits        = initial_digits;
-        state         = scan_zeros;
+        state         = scan_state::scan_zeros;
         
         return output;
     }
 };
 
-template< typename OutputValueT,
-          typename InputIt,
+template< std::integral OutputValueT,
+          unsigned_integral_iterator InputIt,
           typename OutputIt >
-requires std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > &&
-         std::integral< OutputValueT >
 constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     decoder< OutputIt, OutputValueT > d( output, k );
