@@ -34,10 +34,10 @@ namespace pg::golomb
 {
 
 template<typename InputIt>
-concept integral_iterator = std::integral< typename std::iterator_traits< InputIt >::value_type >;
+concept integral_iterator = std::integral< typename std::iterator_traits< InputIt >::value_type > && std::input_iterator<InputIt>;
 
 template<typename InputIt>
-concept unsigned_integral_iterator = std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type >;
+concept unsigned_integral_iterator = std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > && std::input_iterator<InputIt>;
 
 namespace detail
 {
@@ -84,6 +84,7 @@ auto to_integral( std::unsigned_integral auto u )
 }
 
 template< typename OutputIt, std::unsigned_integral OutputDataT = uint8_t >
+requires std::output_iterator<OutputIt, OutputDataT>
 class encoder
 {
     static constexpr auto output_digits = std::numeric_limits< OutputDataT >::digits;
@@ -192,6 +193,7 @@ public:
 template< std::unsigned_integral OutputDataT = uint8_t,
           integral_iterator InputIt,
           typename OutputIt >
+requires std::output_iterator<OutputIt, OutputDataT>
 constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     using ValueT = typename std::iterator_traits< InputIt >::value_type;
@@ -309,6 +311,7 @@ public:
 template< std::integral OutputValueT,
           unsigned_integral_iterator InputIt,
           typename OutputIt >
+requires std::output_iterator<OutputIt, OutputValueT>
 constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     decoder< OutputIt, OutputValueT > d( output, k );
