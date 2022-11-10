@@ -37,10 +37,10 @@ namespace detail
 {
 
 template<typename InputIt>
-concept integral_iterator = ::std::integral< typename ::std::iterator_traits< InputIt >::value_type > && ::std::input_iterator<InputIt>;
+concept integral_iterator = std::integral< typename std::iterator_traits< InputIt >::value_type > && std::input_iterator<InputIt>;
 
 template<typename InputIt>
-concept unsigned_integral_iterator = ::std::unsigned_integral< typename ::std::iterator_traits< InputIt >::value_type > && ::std::input_iterator<InputIt>;
+concept unsigned_integral_iterator = std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > && std::input_iterator<InputIt>;
 
 template< std::signed_integral SignedT >
 auto to_unsigned( SignedT s )
@@ -223,7 +223,7 @@ class decoder
     UnsignedOutputValueT output_buffer;
     int                  digits;
     
-    enum class scan_state { scan_zeros, decode } state = scan_zeros;
+    enum class scan_state { scan_zeros, decode } state = scan_state::scan_zeros;
 
 public:
     decoder( OutputIt output, size_t k = 0u )
