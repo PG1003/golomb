@@ -98,11 +98,11 @@ class encoder
     int         encoded_count;
 
 public:
-    encoder( OutputIt output_in, size_t k_in = 0u ) noexcept
-        : output( output_in )
-        , k( k_in)
-        , base( 1u << k_in)
-        , zeros_threshold( 1 + k_in)
+    encoder( OutputIt output, size_t k = 0u ) noexcept
+        : output( output )
+        , k( k )
+        , base( 1u << k )
+        , zeros_threshold( 1 + k )
         , encoded( static_cast< OutputDataT>( 0u ) )
         , encoded_count( 0 )
     {}
@@ -116,7 +116,7 @@ public:
         static constexpr auto input_digits  = std::numeric_limits< UnsignedInputValueT >::digits;
         static constexpr auto input_mask    = std::numeric_limits< UnsignedInputValueT >::max();
 
-        const auto overflow_threshold = input_mask - ( static_cast< OutputDataT >( base ) );
+        const auto overflow_threshold = input_mask - static_cast< OutputDataT >( base );
         const auto max_zeros          = input_digits - k;
 
         const auto u         = detail::to_unsigned( x );
@@ -124,7 +124,7 @@ public:
         const auto value     = static_cast< UnsignedInputValueT >( u + base );
         const int  bit_width = static_cast< int >( std::bit_width( value ) ); // cast is a workaround for unresolved defect report in GCC/libc++
         const int  width     = overflow ? input_digits : bit_width;
-        const int  zeros     = overflow ? max_zeros : (width - zeros_threshold);
+        const int  zeros     = overflow ? max_zeros : width - zeros_threshold;
 
         encoded_count += zeros;
         for( ; encoded_count >= output_digits ; encoded_count -= output_digits )
