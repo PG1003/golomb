@@ -35,12 +35,34 @@ namespace pg::golomb
 
 namespace detail
 {
+    template<typename InputIt>
+    concept input_iterator_all_compilers = requires()
+    {
+        // Clang and GCC have a different implementation of std::input_iterator<typename>, which fails this concept while MSVC allows it.
+        // Workaround: use the less strict constraint std::input_or_output_iterator instead of std::input_iterator
+#ifdef _MSC_VER
+        requires std::input_iterator< InputIt >;
+#else
+        requires std::input_or_output_iterator< InputIt >;
+#endif
+    };
 
 template<typename InputIt>
-concept integral_iterator = std::integral< typename std::iterator_traits< InputIt >::value_type > && std::input_iterator<InputIt>;
+concept integral_iterator = std::integral< typename std::iterator_traits< InputIt >::value_type > && input_iterator_all_compilers< InputIt >;
 
 template<typename InputIt>
-concept unsigned_integral_iterator = std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > && std::input_iterator<InputIt>;
+concept unsigned_integral_iterator = std::unsigned_integral< typename std::iterator_traits< InputIt >::value_type > && input_iterator_all_compilers< InputIt >;
+
+// Workaround: only use std::output_iterator for MSVC
+template<typename OutputIt, typename UnderlayingType>
+concept output_iterator_all_compilers = requires()
+{
+#ifdef _MSC_VER
+    requires std::output_iterator<OutputIt, UnderlayingType>;
+#else
+    requires true;// cannot use std::output_iterator or std::input_or_output_iterator since it won't allow backinserters.
+#endif
+};
 
 template< std::signed_integral SignedT >
 auto to_unsigned( SignedT s )
@@ -84,7 +106,7 @@ auto to_integral( std::unsigned_integral auto u )
 }
 
 template< typename OutputIt, std::unsigned_integral OutputDataT = uint8_t >
-requires std::output_iterator<OutputIt, OutputDataT>
+requires pg::golomb::detail::output_iterator_all_compilers<OutputIt, OutputDataT>
 class encoder
 {
     static constexpr auto output_digits = std::numeric_limits< OutputDataT >::digits;
@@ -193,7 +215,7 @@ public:
 template< std::unsigned_integral OutputDataT = uint8_t,
           pg::golomb::detail::integral_iterator InputIt,
           typename OutputIt >
-requires std::output_iterator<OutputIt, OutputDataT>
+requires pg::golomb::detail::output_iterator_all_compilers<OutputIt, OutputDataT>
 constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     using ValueT = typename std::iterator_traits< InputIt >::value_type;
@@ -311,7 +333,7 @@ public:
 template< std::integral OutputValueT,
           pg::golomb::detail::unsigned_integral_iterator InputIt,
           typename OutputIt >
-requires std::output_iterator<OutputIt, OutputValueT>
+requires pg::golomb::detail::output_iterator_all_compilers<OutputIt , OutputValueT>
 constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
 {
     decoder< OutputIt, OutputValueT > d( output, k );
