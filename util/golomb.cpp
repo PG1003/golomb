@@ -137,8 +137,8 @@ struct binary_input_file_iterator
         return !operator==( other );
     }
 
-    T &                          operator*()        { return value; }
-    const T &                    operator*()  const { return value; }
+    reference                    operator*()        { return value; }
+    const reference              operator*()  const { return value; }
     binary_input_file_iterator * operator->() const { return &value; }
     binary_input_file_iterator & operator++()       { next(); return *this; }
     binary_input_file_iterator   operator++( int )  { auto it = *this; next(); return it; }
@@ -181,6 +181,11 @@ struct binary_output_file_iterator
         : file( file )
     {}
 
+    binary_output_file_iterator(const binary_output_file_iterator& other)                   = default; // Copy ctor
+    binary_output_file_iterator& operator= (const binary_output_file_iterator& other)       = default; // Copy assignment
+    binary_output_file_iterator(binary_output_file_iterator&& other)             noexcept   = default; // Move ctor
+    binary_output_file_iterator& operator= (binary_output_file_iterator&& other) noexcept   = default; // Move ctor
+
     T operator=( T value )
     {
         assert( file );
@@ -213,7 +218,7 @@ struct binary_output_file_iterator
     binary_output_file_iterator   operator++( int ) { return *this; }
 
 private:
-    std::FILE * const file = nullptr;
+    std::FILE * file = nullptr;
 };
 
 
