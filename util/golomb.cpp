@@ -137,9 +137,9 @@ struct binary_input_file_iterator
         return !operator==( other );
     }
 
-    reference                    operator*() { return value; }
+    reference                    operator*()        { return value; }
     const reference              operator*()  const { return value; }
-    binary_input_file_iterator* operator->() const { return &value; }
+    binary_input_file_iterator * operator->() const { return &value; }
     binary_input_file_iterator & operator++()       { next(); return *this; }
     binary_input_file_iterator   operator++( int )  { auto it = *this; next(); return it; }
 
