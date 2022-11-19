@@ -137,8 +137,7 @@ struct binary_input_file_iterator
         return !operator==( other );
     }
 
-    reference                    operator*()        { return value; }
-    const reference              operator*()  const { return value; }
+    const value_type &           operator*()  const { return value; }
     binary_input_file_iterator * operator->() const { return &value; }
     binary_input_file_iterator & operator++()       { next(); return *this; }
     binary_input_file_iterator   operator++( int )  { auto it = *this; next(); return it; }
@@ -165,6 +164,32 @@ private:
         {
             golomb_errno( "Input" );
         }
+    }
+};
+
+template< typename T >
+struct binary_input_file
+{
+    using value_type      = T;
+    using const_pointer   = const T *;
+    using const_reference = const T &;
+    using difference_type = std::ptrdiff_t;
+    using iterator        = binary_input_file_iterator< T >;
+
+    std::FILE * file  = nullptr;
+
+    binary_input_file( std::FILE * file )
+        : file( file )
+    {}
+
+    auto begin() const -> iterator
+    {
+        return iterator( file );
+    }
+
+    auto end() const -> iterator
+    {
+        return iterator();
     }
 };
 
@@ -375,57 +400,49 @@ static void encode( std::FILE * const in, std::FILE * const out, data_type type,
     switch( type )
     {
     case data_type::int8:
-        pg::golomb::encode( binary_input_file_iterator< int8_t >( in ),
-                            binary_input_file_iterator< int8_t >(),
+        pg::golomb::encode( binary_input_file< int8_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::uint8:
-        pg::golomb::encode( binary_input_file_iterator< uint8_t >( in ),
-                            binary_input_file_iterator< uint8_t >(),
+        pg::golomb::encode( binary_input_file< uint8_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::int16:
-        pg::golomb::encode( binary_input_file_iterator< int16_t >( in ),
-                            binary_input_file_iterator< int16_t >(),
+        pg::golomb::encode( binary_input_file< int16_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::uint16:
-        pg::golomb::encode( binary_input_file_iterator< uint16_t >( in ),
-                            binary_input_file_iterator< uint16_t >(),
+        pg::golomb::encode( binary_input_file< uint16_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::int32:
-        pg::golomb::encode( binary_input_file_iterator< int32_t >( in ),
-                            binary_input_file_iterator< int32_t >(),
+        pg::golomb::encode( binary_input_file< int32_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::uint32:
-        pg::golomb::encode( binary_input_file_iterator< uint32_t >( in ),
-                            binary_input_file_iterator< uint32_t >(),
+        pg::golomb::encode( binary_input_file< uint32_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::int64:
-        pg::golomb::encode( binary_input_file_iterator< int64_t >( in ),
-                            binary_input_file_iterator< int64_t >(),
+        pg::golomb::encode( binary_input_file< int64_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
 
     case data_type::uint64:
-        pg::golomb::encode( binary_input_file_iterator< uint64_t >( in ),
-                            binary_input_file_iterator< uint64_t >(),
+        pg::golomb::encode( binary_input_file< uint64_t >( in ),
                             binary_output_file_iterator< uint8_t >( out ),
                             k );
         break;
@@ -437,57 +454,49 @@ static void decode( std::FILE * const in, std::FILE * const out, data_type type,
     switch( type )
     {
     case data_type::int8:
-        pg::golomb::decode< int8_t >( binary_input_file_iterator< uint8_t >( in ),
-                                      binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< int8_t >( binary_input_file< uint8_t >( in ),
                                       binary_output_file_iterator< int8_t >( out ),
                                       k );
         break;
 
     case data_type::uint8:
-        pg::golomb::decode< uint8_t >( binary_input_file_iterator< uint8_t >( in ),
-                                       binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< uint8_t >( binary_input_file< uint8_t >( in ),
                                        binary_output_file_iterator< uint8_t >( out ),
                                        k );
         break;
 
     case data_type::int16:
-        pg::golomb::decode< int16_t >( binary_input_file_iterator< uint8_t >( in ),
-                                       binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< int16_t >( binary_input_file< uint8_t >( in ),
                                        binary_output_file_iterator< int16_t >( out ),
                                        k );
         break;
 
     case data_type::uint16:
-        pg::golomb::decode< uint16_t >( binary_input_file_iterator< uint8_t >( in ),
-                                        binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< uint16_t >( binary_input_file< uint8_t >( in ),
                                         binary_output_file_iterator< uint16_t >( out ),
                                         k );
         break;
 
     case data_type::int32:
-        pg::golomb::decode< int32_t >( binary_input_file_iterator< uint8_t >( in ),
-                                       binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< int32_t >( binary_input_file< uint8_t >( in ),
                                        binary_output_file_iterator< int32_t >( out ),
                                        k );
         break;
 
     case data_type::uint32:
-        pg::golomb::decode< uint32_t >( binary_input_file_iterator< uint8_t >( in ),
-                                        binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< uint32_t >( binary_input_file< uint8_t >( in ),
                                         binary_output_file_iterator< uint32_t >( out ),
                                         k );
         break;
 
     case data_type::int64:
-        pg::golomb::decode< int64_t >( binary_input_file_iterator< uint8_t >( in ),
-                                       binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< int64_t >( binary_input_file< uint8_t >( in ),
                                        binary_output_file_iterator< int64_t >( out ),
                                        k );
         break;
 
     case data_type::uint64:
-        pg::golomb::decode< uint64_t >( binary_input_file_iterator< uint8_t >( in ),
-                                        binary_input_file_iterator< uint8_t >(),
+        pg::golomb::decode< uint64_t >( binary_input_file< uint8_t >( in ),
                                         binary_output_file_iterator< uint64_t >( out ),
                                         k );
         break;
