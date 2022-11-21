@@ -37,24 +37,47 @@ Besides the following examples you can take a peek in the sources of the [test p
 ### Encode
 
 ```c++
-const uint8_t          values[ 8 ] = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
-std::vector< uint8_t > data;
+const uint8_t values[ 8 ] = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
 
-pg::golomb::encode( std::begin( values ), std::end( values ), std::back_inserter( data ) );
+// Encode using a range as input
+std::vector< uint8_t > out_range;
 
-assert( data.size() == 4 );
+pg::golomb::encode( values, std::back_inserter( out_range ) );
+
+assert( out_range.size() == 5 );
+
+// Encode using iterators as input
+std::vector< uint8_t > out_iter;
+
+pg::golomb::encode( std::begin( values ), std::end( values ), std::back_inserter( out_iter ) );
+
+assert( out_iter.size() == 5 );
 ```
 
 ### Decode
 
 ```c++
-const uint8_t          data[ 5 ] = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
-std::vector< int16_t > values;
+const uint8_t data[ 5 ] = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
 
-pg::golomb::decode< int16_t >( std::begin( data ), std::end( data ), std::back_inserter( values ) );
+// Decode using a ranges as input
+std::vector< int16_t > values_range;
 
-assert_same( values.size(), 8 );
+pg::golomb::decode< int16_t >( data, std::back_inserter( values_range ) );
+
+assert( values_range.size() == 8 );
+
+// Decode using iterators as input
+std::vector< int32_t > values_iter;
+
+pg::golomb::decode< int32_t >( std::begin( data ), std::end( data ), std::back_inserter( values_iter ) );
+
+assert( values_iter.size() == 8 );
 ```
+
+## Endianess
+
+The golomb library do not handle endianess in a specific way; this depends on the platform.  
+Use `uint8_t` for golomb encoded input and output data when cross-platform data exchange is required.
 
 ## golomb utility
 
@@ -69,42 +92,3 @@ make golomb
 
 Information about the usage is displayed by running the executable with the `-h` option.
 You can also read the help text that is displayed by the executable from the [source file](https://github.com/PG1003/golomb/blob/main/util/golomb.cpp).
-
-## Documentation
-
-### API
-
-This library has two functions that live in the `pg::glomb` namespace; `encode` and `decode`.  
-Like the algorithms in the STL these functions use iterators to read and write values.
-Iterators give you the freedom to use raw pointers, iterators from standard containers or your own fancy iterator.
-
-#### `output_iterator pg::data::encode< OutputDataT = uint8_t >( input_iterator in, input_iterator last, output_iterator out, size_t k = 0 )`
-
-Reads data from `in` until the iterator is equal to last. The encoded data is written to `out`.
-The function returns an `output_iterator` that points to one past the last written data.
-
-The data type accessed via the `input_iterator` can be of any size but must be an signed or unsigned integral type, e.g. `unsigned char`, `uint32_t`, `long`, `int8_t`, etc.  
-The `output_iterator` must handle _unsigned_ data. Default is `uint8_t` but can be overridden by the `OutputDataT` template parameter.
-
-`out` must accommodate enough space to buffer the encoded data which may require more space than the input data.
-
-`k` is the order of the algorithm that specifies the miminum number of bits that is used for a value.
-A higher number may increase the efficiency when the values are relative large at the expense of smaller values.
-
-#### `output_iterator pg::brle::decode< OutputValueT >( input_iterator in, input_iterator last, output_iterator out, size_t k = 0 )`
-
-Reads data values from `in` until the iterator is equal to last. The decoded data is written to `out`.
-The function returns an output_iterator that points to one past the last written decoded value.
-
-The `input_iterator` must dereference to an _unsigned_ data type.
-The value type written to the `output_iterator` is specified by the `OutputValueT` template parameter.
-This parameter must be a signed or an unsigned integer type.
-
-Be sure that `out` can buffer all the data that is decoded from the input.
-
-`k` is the order in which the input data is encoded and _must_ match the order used at encoding the values or else the decoded values are undefined.
-
-### Endianess
-
-The functions do not handle endianess in a specific way; this depends on the platform.  
-Use `uint8_t` for encoded input and output data when cross-platform data exchange is required.

@@ -3,6 +3,7 @@
 #include <array>
 #include <vector>
 #include <iostream>
+#include <algorithm>
 
 static int total_checks  = 0;
 static int failed_checks = 0;
@@ -184,20 +185,42 @@ static void decode_wide_to_narrow_k0()
 static void readme()
 {
     {
-        const uint8_t          values[ 8 ] = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
-        std::vector< uint8_t > data;
+        const uint8_t values[ 8 ] = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
 
-        pg::golomb::encode( std::begin( values ), std::end( values ), std::back_inserter( data ) );
+        // Encoding using a range as input
+        std::vector< uint8_t > out_range;
 
-        assert_same( data.size(), 5 );
+        pg::golomb::encode( values, std::back_inserter( out_range ) );
+
+        assert_same( out_range.size(), 5 );
+
+        // Encoding using iterators as input
+        std::vector< uint8_t > out_iter;
+
+        pg::golomb::encode( std::begin( values ), std::end( values ), std::back_inserter( out_iter ) );
+
+        assert_same( out_iter.size(), 5 );
+
+        assert_true( std::ranges::equal( out_range, out_iter ) );
     }
     {
-        const uint8_t          data[ 5 ] = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
-        std::vector< int16_t > values;
+        const uint8_t data[ 5 ] = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
 
-        pg::golomb::decode< int16_t >( std::begin( data ), std::end( data ), std::back_inserter( values ) );
+        // Decoding using a ranges as input
+        std::vector< int16_t > values_range;
 
-        assert_same( values.size(), 8 );
+        pg::golomb::decode< int16_t >( data, std::back_inserter( values_range ) );
+
+        assert_same( values_range.size(), 8 );
+
+        // Decoding using iterators as input
+        std::vector< int32_t > values_iter;
+
+        pg::golomb::decode< int32_t >( std::begin( data ), std::end( data ), std::back_inserter( values_iter ) );
+
+        assert_same( values_iter.size(), 8 );
+
+        assert_true( std::ranges::equal( values_range, values_iter ) );
     }
 }
 
