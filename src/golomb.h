@@ -101,8 +101,8 @@ auto to_integral( std::unsigned_integral auto u )
  * The encoded values have a variable number of bits that are buffered and packed.
  * The buffer size is equal to the \em OutputDataT and written to the output when all bits are set by the encoder.
  * 
- * \tparam OutputIt    The output iterator type that is used to write the encoded values to
- * \tparam OutputDataT The unsigned integral type used as value type that is written to output
+ * \tparam OutputIt    The type of the output iterator to which the encoded values are written
+ * \tparam OutputDataT An unsigned integral type which is used for the data that is written to output
  */
 template< typename OutputIt, std::unsigned_integral OutputDataT = uint8_t >
 requires std::output_iterator< OutputIt, OutputDataT >
@@ -123,7 +123,7 @@ public:
      * \brief Construct the encoder
      *
      * \param output Output iterator to which the encoded values are written
-     * \param k      Order of in which the values are encoded
+     * \param k      The order the values are encoded
      * 
      * \note Be sure that `output` can buffer the resulting encoded bitstream.
      */
@@ -242,8 +242,8 @@ public:
  *
  * \param input  An input iterator to read integral values from
  * \param last   The iterator that marks the end of input range
- * \param output The output iterator to which the ecoded values are written to
- * \param k      Order in which the values from input will be encoded
+ * \param output The output iterator to which the ecoded values are written
+ * \param k      The order the values from input will be encoded
  * 
  * \note Be sure that `out` can buffer all the data that is decoded from the input.
  */
@@ -269,8 +269,8 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
  * \overload encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
  * 
  * \param input  A range to read integral values from that are encoded
- * \param output The output iterator to which the ecoded values are written to
- * \param k      Order in which the values from input will be encoded
+ * \param output The output iterator to which the ecoded values are written
+ * \param k      The order the values from input will be encoded
  */
 template< std::unsigned_integral OutputDataT = uint8_t,
           detail::integral_input_range InputRangeT,
@@ -296,7 +296,7 @@ auto encode( const InputRangeT & input, OutputIt output, size_t k = 0u )
  * All data fed to the decoder is scanned immediately. The values found while scanning are written to the output.
  * Remainig bits are buffered and processed when more data is fed to the decoder.
  *
- * \tparam OutputIt    The output iterator type that is used to write the decoded values to
+ * \tparam OutputIt    The type of the output iterator to which the decoded values are written
  * \tparam OutputDataT The integral type of the decoded values
  *
  * \note Be sure the values encoded in the golomb data fits within value range of \em OutputDataT.
@@ -323,7 +323,7 @@ public:
      * \brief Construct the decoder
      *
      * \param output Output iterator to which the decoded values are written
-     * \param k      Order of in which the values from the golomb data are encoded
+     * \param k      The order the values from the golomb data are decoded
      * 
      * \note Be sure that `output` can buffer the resulting encoded bitstream.
      * 
@@ -409,7 +409,7 @@ public:
 
         return output;
     }
-    
+
     /**
      * \brief Resets the decoder
      *
@@ -430,10 +430,10 @@ public:
  *
  * \tparam OutputDataT The integral type of the decoded values
  *
- * \param input  An input iterator to read binary golomb data from
+ * \param input  The input iterator from which the read binary golomb data is read from
  * \param last   The iterator that marks the end of input range
- * \param output The output iterator to which the decoded values are written to
- * \param k      Order in which the data from input is encoded
+ * \param output The output iterator to which the decoded values are written
+ * \param k      The order the values in the golomb data are encoded
  *
  * \note Be sure the values encoded in the golomb data fits within value range of \em OutputDataT.
  *
@@ -464,8 +464,8 @@ constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 
  * \tparam OutputDataT The integral type of the decoded values
  *
  * \param input  An input range to read binary golomb data from
- * \param output The output iterator to which the decoded values are written to
- * \param k      Order in which the data from input is encoded
+ * \param output The output iterator to which the decoded values are written
+ * \param k      The order in which the data from input is encoded
  */
 template< std::integral OutputValueT,
           detail::unsigned_integral_input_range InputRangeT,
