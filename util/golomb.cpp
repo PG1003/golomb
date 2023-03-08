@@ -113,7 +113,7 @@ struct binary_input_file_iterator
     using reference         = T &;
     using iterator_category = std::input_iterator_tag;
 
-    binary_input_file_iterator( std::FILE * file = nullptr )
+    [[nodiscard]] binary_input_file_iterator( std::FILE * file = nullptr )
         : file( file )
     {
         if( file )
@@ -122,7 +122,7 @@ struct binary_input_file_iterator
         }
     }
 
-    bool operator==( const binary_input_file_iterator & other ) const
+    [[nodiscard]] bool operator==( const binary_input_file_iterator & other ) const
     {
         if( file == nullptr || other.file == nullptr )
         {
@@ -132,15 +132,15 @@ struct binary_input_file_iterator
         return file == other.file && std::ftell( file ) == std::ftell( other.file );
     }
 
-    bool operator!=( const binary_input_file_iterator & other ) const
+    [[nodiscard]] bool operator!=( const binary_input_file_iterator & other ) const
     {
         return !operator==( other );
     }
 
-    const value_type &           operator*()  const { return value; }
-    binary_input_file_iterator * operator->() const { return &value; }
-    binary_input_file_iterator & operator++()       { next(); return *this; }
-    binary_input_file_iterator   operator++( int )  { auto it = *this; next(); return it; }
+    const value_type &           operator*()  const noexcept { return value; }
+    binary_input_file_iterator * operator->() const noexcept { return &value; }
+    binary_input_file_iterator & operator++() noexcept       { next(); return *this; }
+    binary_input_file_iterator   operator++( int ) noexcept  { auto it = *this; next(); return it; }
 
 private:
     std::FILE * file  = nullptr;
@@ -178,16 +178,16 @@ struct binary_input_file
 
     std::FILE * file  = nullptr;
 
-    binary_input_file( std::FILE * file )
+    [[nodiscard]] binary_input_file( std::FILE * file ) noexcept
         : file( file )
     {}
 
-    auto begin() const -> iterator
+    [[nodiscard]] auto begin() const noexcept -> iterator
     {
         return iterator( file );
     }
 
-    auto end() const -> iterator
+    [[nodiscard]] auto end() const noexcept -> iterator
     {
         return iterator();
     }
@@ -202,23 +202,24 @@ struct binary_output_file_iterator
     using reference         = void;
     using iterator_category = std::output_iterator_tag;
 
-    binary_output_file_iterator( std::FILE * file = nullptr )
+    [[nodiscard]] binary_output_file_iterator( std::FILE * file = nullptr ) noexcept
         : file( file )
     {}
 
-    T operator=( T value )
+    T operator=( T value ) noexcept
     {
         assert( file );
 
         if( std::fwrite( &value, sizeof( T ), 1, file ) != 1 )
         {
-
+            std::perror( "output" );
+            std::exit( errno );
         }
 
         return value;
     }
 
-    bool operator==( const binary_output_file_iterator & other ) const
+    [[nodiscard]] bool operator==( const binary_output_file_iterator & other ) const noexcept
     {
         if( file == nullptr || other.file == nullptr )
         {
@@ -228,14 +229,14 @@ struct binary_output_file_iterator
         return file == other.file && std::ftell( file ) == std::ftell( other.file );
     }
 
-    bool operator!=( const binary_output_file_iterator & other ) const
+    [[nodiscard]] bool operator!=( const binary_output_file_iterator & other ) const noexcept
     {
         return !operator==( other );
     }
 
-    binary_output_file_iterator & operator*()       { return *this; }
-    binary_output_file_iterator & operator++()      { return *this; }
-    binary_output_file_iterator   operator++( int ) { return *this; }
+    binary_output_file_iterator & operator*() noexcept       { return *this; }
+    binary_output_file_iterator & operator++() noexcept      { return *this; }
+    binary_output_file_iterator   operator++( int ) noexcept { return *this; }
 
 private:
     std::FILE * file = nullptr;
@@ -340,7 +341,7 @@ enum class data_type
     uint64
 };
 
-static data_type decode_format_arg( char option, std::string_view fmt )
+[[nodiscard]] static data_type decode_format_arg( char option, std::string_view fmt ) noexcept
 {
     if( fmt.size() > 0 )
     {
@@ -377,7 +378,7 @@ static data_type decode_format_arg( char option, std::string_view fmt )
     return data_type::uint8;
 }
 
-static size_t decode_k_arg( std::string_view k )
+[[nodiscard]] static size_t decode_k_arg( std::string_view k ) noexcept
 {
 
     const auto begin = k.data();
@@ -395,7 +396,7 @@ static size_t decode_k_arg( std::string_view k )
     return static_cast< size_t >( order );
 }
 
-static void encode( std::FILE * const in, std::FILE * const out, data_type type, size_t k )
+static void encode( std::FILE * const in, std::FILE * const out, data_type type, size_t k ) noexcept
 {
     switch( type )
     {
@@ -449,7 +450,7 @@ static void encode( std::FILE * const in, std::FILE * const out, data_type type,
     }
 }
 
-static void decode( std::FILE * const in, std::FILE * const out, data_type type, size_t k )
+static void decode( std::FILE * const in, std::FILE * const out, data_type type, size_t k ) noexcept
 {
     switch( type )
     {
