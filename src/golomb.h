@@ -28,8 +28,10 @@
 #include <limits>
 #include <iterator>
 #include <bit>
-#include <algorithm>
 #include <type_traits>
+#if !defined( __cpp_lib_byteswap )
+#include <algorithm>
+#endif
 
 
 namespace pg::golomb
@@ -406,21 +408,24 @@ constexpr auto encode( InputRangeT input, OutputIt output, size_t k = {} )
 }
 
 /**
+ * \brief Golomb decoder status when finished decoding a value from the input.
+ */
+enum decoder_status
+{
+    success,        ///< Decoded successfuly; value is valid
+    done,           ///< No more data available to decode
+    zero_overflow,  ///< Exceeded leading zeros for \em OutputVaueT and given order;
+                    // value holds the number of zeros (clipped at max for OutputValueT).
+};
+
+/**
  * \brief Golomb decoder_result object that holds the decoded value and/or the decoder status
  */
 template< std::integral OutputValueT >
 struct decoder_result
 {
-    enum status
-    {
-        success,        ///< Decoded successfuly; value is valid
-        done,           ///< No more data available to decode
-        zero_overflow,  ///< Exceeded leading zeros for \em OutputVaueT and given order;
-                        // value holds the number of zeros (clipped at max for OutputValueT).
-    };
-
-    OutputValueT value;
-    status       status;
+    OutputValueT   value;
+    decoder_status status;
 };
 
 /**
@@ -512,7 +517,6 @@ public:
     template< std::integral OutputValueT, size_t k = {} >
     [[nodiscard]] decoder_result< OutputValueT > constexpr pull()
     {
-        using ResultT              = decoder_result< OutputValueT >;
         using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
         using CommonT              = typename std::common_type< InputDataT, UnsignedOutputValueT >::type;
 
@@ -526,7 +530,7 @@ public:
         {
             if( !check_data() )
             {
-                return { {}, ResultT::done };
+                return { {}, decoder_status::done };
             }
 
             const auto bit_width = std::bit_width( data );
@@ -547,7 +551,7 @@ public:
             constexpr auto max_output_value = std::numeric_limits< OutputValueT >::max();
             const auto     zeros_clamped    = std::min( static_cast< size_t >( max_output_value ), zeros );
 
-            return { static_cast< OutputValueT >( zeros_clamped ), ResultT::zero_overflow };
+            return { static_cast< OutputValueT >( zeros_clamped ), decoder_status::zero_overflow };
         }
 
         // Read value
@@ -556,7 +560,7 @@ public:
         {
             if( digits && !check_data() )
             {
-                return { {}, ResultT::done };
+                return { {}, decoder_status::done };
             }
 
             if( digits >= data_bits_remaining )
@@ -587,7 +591,7 @@ public:
         const auto buffered_value = static_cast< UnsignedOutputValueT >( buffer + base );
         const auto value          = to_integral< OutputValueT >( buffered_value );
 
-        return { value, ResultT::success };
+        return { value, decoder_status::success };
     }
 
     /**
@@ -648,7 +652,7 @@ constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 
     while( d.has_data() )
     {
         const auto [ value, status ] = d.template pull< OutputValueT >( k );
-        if( status == decoder_result< OutputValueT >::success )
+        if( status == decoder_status::success )
         {
             *output++ = value;
         }

@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 #include <golomb.h>
+#include <bit>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -251,7 +252,7 @@ static void print_help()
         "A tool to compress or expand binary data using Exponential Golomb Encoding.\n"
         "\n"
         "SYNOPSIS\n"
-        "    golomb -[ed] -[k] [-h] input output\n"
+        "    golomb [-aN] [-{e|d}[FORMAT]] [-h] [-kN] input output\n"
         "\n"
         "DESCRIPTION\n"
         "    golomb reduces the size of its input by using Exponential Golomb Encoding\n"
@@ -269,10 +270,26 @@ static void print_help()
         "    may not be as good as achieved by other utilities.\n"
         "\n"
         "OPTIONS\n"
+        "    -aN         Enable adaptive mode with factor 'N', must be a positive number.\n"
         "    -e[FORMAT]  Encode and specifies the input format, default format is 'u8'.\n"
         "    -d[FORMAT]  Decode and specifies the output format, default format is 'u8'.\n"
         "    -h          Shows this help.\n"
         "    -kN         Order 'N', must be a positive number. Default is '0'.\n"
+        "\n"
+        "ADAPTIVE MODE\n"
+        "    When adaptive mode is anabled the golomb order automatically is adjusted"
+        "    based on the processed data. For each value the optimum golomb order is"
+        "    calculated. A simple smoothing filter with is applied. The"
+        "    result is used to encode the next value."
+        "\n"
+        "    The order cannot be negative and must be smaller than the number of bits of\n"
+        "    the values that are encoded or decoded.\n"
+        "\n"
+        "    The filter used to caculate the order is an exponential smoothing filter.\n"
+        "    The filter factor is caculated as 2^N\n"
+        "    The order passed with option 'k' is used to initialize the filter.\n"
+        "\n"
+        "    You must use the same adaptive mode to decode glomb data as it was encoded.\n"
         "\n"
         "FORMAT\n"
         "    The following formats are supported:\n"
@@ -302,6 +319,10 @@ static void print_help()
         "\n"
         "    Data must be decoded with the same order as it is encoded or else the result\n"
         "    is undefined.\n"
+        "\n"
+        "    When the adaptive mode is enabled the order is used to initialize the\n"
+        "    smoothing filter that is used to caculate the order in which the next value\n"
+        "    is encoded.\n"
         "\n"
         "USAGE\n"
         "    The '-eu8' and '-k0' options are use as default when these options are not\n"
@@ -378,129 +399,199 @@ enum class data_type
     return data_type::uint8;
 }
 
+[[nodiscard]] static int decode_adaptive_arg( std::string_view a ) noexcept
+{
+    auto       begin = a.data();
+    const auto end   = begin + a.size();
+    int        order = {};
+
+    const auto [ pos_ptr, ec ] = std::from_chars( begin, end, order );
+    if( pos_ptr == begin || pos_ptr != end || order < 0 )
+    {
+        golomb_argument_error( "Invalid argument for option 'a'." );
+    }
+
+    return order;
+}
+
 [[nodiscard]] static size_t decode_k_arg( std::string_view k ) noexcept
 {
-
-    const auto begin = k.data();
+    auto       begin = k.data();
     const auto end   = begin + k.size();
+    size_t     order = {};
 
-    int        order           = 0;
     const auto [ pos_ptr, ec ] = std::from_chars( begin, end, order );
-
-    if( ( pos_ptr == begin || pos_ptr != end ) ||
-        ( order < 0 ) )
+    if( pos_ptr == begin || pos_ptr != end )
     {
         golomb_argument_error( "Invalid argument for option 'k'." );
     }
 
-    return static_cast< size_t >( order );
+    return order;
 }
 
-static void encode( std::FILE * const in, std::FILE * const out, data_type type, size_t k ) noexcept
+template< typename InputValueT, typename OutputDataT >
+static void adaptive_encode( std::FILE * const in_file,
+                             std::FILE * const out_file,
+                             size_t k,
+                             int adaptive )
 {
-    switch( type )
+    using UnsignedInputValueT = std::make_unsigned< InputValueT >::type;
+    if( adaptive >= std::numeric_limits< UnsignedInputValueT >::digits )
     {
-    case data_type::int8:
-        pg::golomb::encode( binary_input_file< int8_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+        golomb_argument_error( "Invalid argument for option 'a'." );
+    }
 
-    case data_type::uint8:
-        pg::golomb::encode( binary_input_file< uint8_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+    auto input = binary_input_file_iterator< InputValueT >( in_file );
+    auto last  = binary_input_file_iterator< InputValueT >();
 
-    case data_type::int16:
-        pg::golomb::encode( binary_input_file< int16_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+    using OutputItT = binary_output_file_iterator< OutputDataT >;
+    auto output     = OutputItT( out_file );
 
-    case data_type::uint16:
-        pg::golomb::encode( binary_input_file< uint16_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+    pg::golomb::encoder< OutputItT, OutputDataT > e( output );
 
-    case data_type::int32:
-        pg::golomb::encode( binary_input_file< int32_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+    for( ; input != last ; ++input )
+    {
+        const auto unsigned_value = pg::golomb::to_unsigned( *input );
 
-    case data_type::uint32:
-        pg::golomb::encode( binary_input_file< uint32_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+        e.push( unsigned_value, k );
 
-    case data_type::int64:
-        pg::golomb::encode( binary_input_file< int64_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
-                            k );
-        break;
+        k = k - ( k >> adaptive ) + ( std::bit_width( unsigned_value ) >> adaptive );
+    }
 
-    case data_type::uint64:
-        pg::golomb::encode( binary_input_file< uint64_t >( in ),
-                            binary_output_file_iterator< uint8_t >( out ),
+    e.flush();
+}
+
+template< typename InputValueT, typename OutputDataT >
+static void encode( std::FILE * const in_file,
+                    std::FILE * const out_file,
+                    size_t k,
+                    int adaptive )
+{
+    if( adaptive >= 0 )
+    {
+        adaptive_encode< InputValueT, OutputDataT >( in_file, out_file, k, adaptive );
+    }
+    else
+    {
+        pg::golomb::encode( binary_input_file< InputValueT >( in_file ),
+                            binary_output_file_iterator< OutputDataT >( out_file ),
                             k );
-        break;
     }
 }
 
-static void decode( std::FILE * const in, std::FILE * const out, data_type type, size_t k ) noexcept
+static void encode( std::FILE * const in_file,
+                    std::FILE * const out_file,
+                    data_type type,
+                    size_t k,
+                    int adaptive ) noexcept
 {
     switch( type )
     {
     case data_type::int8:
-        pg::golomb::decode< int8_t >( binary_input_file< uint8_t >( in ),
-                                      binary_output_file_iterator< int8_t >( out ),
-                                      k );
-        break;
+        return encode< int8_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::uint8:
-        pg::golomb::decode< uint8_t >( binary_input_file< uint8_t >( in ),
-                                       binary_output_file_iterator< uint8_t >( out ),
-                                       k );
-        break;
+        return encode< uint8_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::int16:
-        pg::golomb::decode< int16_t >( binary_input_file< uint8_t >( in ),
-                                       binary_output_file_iterator< int16_t >( out ),
-                                       k );
-        break;
+        return encode< int16_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::uint16:
-        pg::golomb::decode< uint16_t >( binary_input_file< uint8_t >( in ),
-                                        binary_output_file_iterator< uint16_t >( out ),
-                                        k );
-        break;
+        return encode< uint16_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::int32:
-        pg::golomb::decode< int32_t >( binary_input_file< uint8_t >( in ),
-                                       binary_output_file_iterator< int32_t >( out ),
-                                       k );
-        break;
+        return encode< int32_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::uint32:
-        pg::golomb::decode< uint32_t >( binary_input_file< uint8_t >( in ),
-                                        binary_output_file_iterator< uint32_t >( out ),
-                                        k );
-        break;
+        return encode< uint32_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::int64:
-        pg::golomb::decode< int64_t >( binary_input_file< uint8_t >( in ),
-                                       binary_output_file_iterator< int64_t >( out ),
-                                       k );
-        break;
+        return encode< int64_t, uint8_t >( in_file, out_file, k, adaptive );
 
     case data_type::uint64:
-        pg::golomb::decode< uint64_t >( binary_input_file< uint8_t >( in ),
-                                        binary_output_file_iterator< uint64_t >( out ),
-                                        k );
-        break;
+        return encode< uint64_t, uint8_t >( in_file, out_file, k, adaptive );
+    }
+}
+
+template< typename InputDataT, typename OutputValueT >
+static void adaptive_decode( std::FILE * const in_file,
+                             std::FILE * const out_file,
+                             size_t k,
+                             int adaptive )
+{
+    using UnsignedOutputValueT = std::make_unsigned< OutputValueT >::type;
+
+    if( adaptive >= std::numeric_limits< UnsignedOutputValueT >::digits )
+    {
+        golomb_argument_error( "Invalid argument for option 'a'." );
+    }
+
+    auto input     = binary_input_file_iterator< InputDataT >( in_file );
+    auto input_end = binary_input_file_iterator< InputDataT >();
+    auto output    = binary_output_file_iterator< OutputValueT >( out_file );
+
+    pg::golomb::decoder d( input, input_end );
+
+    while( d.has_data() )
+    {
+        const auto [ value, status ] = d.template pull< UnsignedOutputValueT >( k );
+        if( status == pg::golomb::decoder_status::success )
+        {
+            k         = k - ( k >> adaptive ) + ( std::bit_width( value ) >> adaptive );
+            *output++ = pg::golomb::to_integral< OutputValueT >( value );
+        }
+    }
+}
+
+template< typename InputDataT, typename OutputValueT >
+static void decode( std::FILE * const in_file,
+                    std::FILE * const out_file,
+                    size_t k,
+                    int adaptive )
+{
+    if( adaptive >= 0 )
+    {
+        adaptive_decode< InputDataT, OutputValueT >( in_file, out_file, k, adaptive );
+    }
+    else
+    {
+        pg::golomb::decode< OutputValueT >( binary_input_file< InputDataT >( in_file ),
+                                            binary_output_file_iterator< OutputValueT >( out_file ),
+                                            k );
+    }
+}
+
+static void decode( std::FILE * const in_file,
+                    std::FILE * const out_file,
+                    data_type type,
+                    size_t k,
+                    int adaptive ) noexcept
+{
+    switch( type )
+    {
+    case data_type::int8:
+        return decode< uint8_t, int8_t >( in_file, out_file, k, adaptive );
+
+    case data_type::uint8:
+        return decode< uint8_t, uint8_t >( in_file, out_file, k, adaptive );
+
+    case data_type::int16:
+        return decode< uint8_t, int16_t >( in_file, out_file, k, adaptive );
+
+    case data_type::uint16:
+        return decode< uint8_t, uint16_t >( in_file, out_file, k, adaptive );
+
+    case data_type::int32:
+        return decode< uint8_t, int32_t >( in_file, out_file, k, adaptive );
+
+    case data_type::uint32:
+        return decode< uint8_t, uint32_t >( in_file, out_file, k, adaptive );
+
+    case data_type::int64:
+        return decode< uint8_t, int64_t >( in_file, out_file, k, adaptive );
+
+    case data_type::uint64:
+        return decode< uint8_t, uint64_t >( in_file, out_file, k, adaptive );
     }
 }
 
@@ -510,7 +601,8 @@ int main( const int argc, const char * argv[] )
 
     transformation   direction = transformation::encode_;
     data_type        type      = data_type::uint8;
-    size_t           k         = 0;
+    size_t           k         = {};
+    int              adaptive  = -1;
     std::string_view input;
     std::string_view output;
 
@@ -520,6 +612,10 @@ int main( const int argc, const char * argv[] )
         {
             switch( opt )
             {
+            case 'a':
+                adaptive = decode_adaptive_arg( opts.read_argument() );
+                break;
+
             case 'e':
                 direction = transformation::encode_;
                 type      = decode_format_arg( opt, opts.read_argument() );
@@ -568,14 +664,14 @@ int main( const int argc, const char * argv[] )
     {
         golomb_errno( "Output" );
     }
-    
+
     if( direction == transformation::encode_ )
     {
-        encode( in_file, out_file, type, k );
+        encode( in_file, out_file, type, k, adaptive );
     }
     else
     {
-        decode( in_file, out_file, type, k );
+        decode( in_file, out_file, type, k, adaptive );
     }
 
     return 0;
