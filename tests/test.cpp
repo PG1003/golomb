@@ -29,6 +29,20 @@ static void encode_all_zeros_k0()
 
     assert_same( result.size(), 1u );
     assert_same( result.front(), 0xFFu );
+
+    std::vector< uint8_t > decoded;
+
+    pg::golomb::decode< uint8_t >( result.cbegin(), result.cend(), std::back_inserter( decoded ) );
+
+    assert_same( decoded.size(), zeros.size() );
+    assert_same( decoded[  0 ], zeros[  0 ] );
+    assert_same( decoded[  1 ], zeros[  1 ] );
+    assert_same( decoded[  2 ], zeros[  2 ] );
+    assert_same( decoded[  3 ], zeros[  3 ] );
+    assert_same( decoded[  4 ], zeros[  4 ] );
+    assert_same( decoded[  5 ], zeros[  5 ] );
+    assert_same( decoded[  6 ], zeros[  6 ] );
+    assert_same( decoded[  7 ], zeros[  7 ] );
 }
 
 static void encode_overflow_k0()
@@ -44,6 +58,14 @@ static void encode_overflow_k0()
     assert_same( result[ 2 ], 0x00u );
     assert_same( result[ 3 ], 0x40u );
     assert_same( result[ 4 ], 0x00u );
+
+    std::vector< uint8_t > decoded;
+
+    pg::golomb::decode< uint8_t >( result.cbegin(), result.cend(), std::back_inserter( decoded ) );
+
+    assert_same( decoded.size(), ones.size() );
+    assert_same( decoded[  0 ], ones[  0 ] );
+    assert_same( decoded[  1 ], ones[  1 ] );
 }
 
 static void encode_overflow_k2()
@@ -58,17 +80,105 @@ static void encode_overflow_k2()
     assert_same( result[ 1 ], 0x06u );
     assert_same( result[ 2 ], 0x04u );
     assert_same( result[ 3 ], 0x0Cu );
+
+    std::vector< uint8_t > decoded;
+
+    pg::golomb::decode< uint8_t >( result.cbegin(), result.cend(), std::back_inserter( decoded ), 2u );
+
+    assert_same( decoded.size(), ones.size() );
+    assert_same( decoded[  0 ], ones[  0 ] );
+    assert_same( decoded[  1 ], ones[  1 ] );
 }
 
 static void encode_narrow_to_wide_k0()
 {
-    const std::array< uint8_t, 2 > values = { 0x00u, 0xFFu };
-    std::vector< uint32_t >        result;
+    const std::array< uint8_t, 12 > values = { 0x00u, 0xFFu, 0x00u, 0xFFu,
+                                               0x00u, 0xFFu, 0x00u, 0xFFu,
+                                               0x00u, 0xFFu, 0x00u, 0xFFu };
+    std::vector< uint32_t > result;
 
     pg::golomb::encode< uint32_t >( values.cbegin(), values.cend(), std::back_inserter( result ) );
 
-    assert_same( result.size(), 1u );
-    assert_same( result[ 0 ], 0x80400000u );
+    assert_same( result.size(), 4u );
+    assert_same( result[ 0 ], 0x10204080u );
+    assert_same( result[ 1 ], 0x01020408u );
+    assert_same( result[ 2 ], 0x20408000u );
+    assert_same( result[ 3 ], 0x00000010u );
+
+    std::vector< uint8_t > decoded;
+
+    pg::golomb::decode< uint8_t >( result.cbegin(), result.cend(), std::back_inserter( decoded ) );
+
+    assert_same( decoded.size(), values.size() );
+    assert_same( decoded[  0 ], values[  0 ] );
+    assert_same( decoded[  1 ], values[  1 ] );
+    assert_same( decoded[  2 ], values[  2 ] );
+    assert_same( decoded[  3 ], values[  3 ] );
+    assert_same( decoded[  4 ], values[  4 ] );
+    assert_same( decoded[  5 ], values[  5 ] );
+    assert_same( decoded[  6 ], values[  6 ] );
+    assert_same( decoded[  7 ], values[  7 ] );
+    assert_same( decoded[  8 ], values[  8 ] );
+    assert_same( decoded[  9 ], values[  9 ] );
+    assert_same( decoded[ 10 ], values[ 10 ] );
+    assert_same( decoded[ 11 ], values[ 11 ] );
+}
+
+static void encode_narrow_to_wide_k4()
+{
+    const std::array< uint8_t, 8 > values = { 0x00u, 0xFFu, 0x00u, 0xFFu,
+                                              0x00u, 0xFFu, 0x00u, 0xFFu };
+    std::vector< uint16_t > result;
+
+    pg::golomb::encode< uint16_t >( values.cbegin(), values.cend(), std::back_inserter( result ), 4u );
+
+    assert_same( result.size(), 5u );
+    assert_same( result[ 0 ], 0x4380u );
+    assert_same( result[ 1 ], 0x10E0u );
+    assert_same( result[ 2 ], 0x04F8u );
+    assert_same( result[ 3 ], 0x013Eu );
+    assert_same( result[ 4 ], 0x000Fu );
+
+    std::vector< uint8_t > decoded;
+
+    pg::golomb::decode< uint8_t >( result.cbegin(), result.cend(), std::back_inserter( decoded ), 4u );
+
+    assert_same( decoded.size(), values.size() );
+    assert_same( decoded[ 0 ], values[ 0 ] );
+    assert_same( decoded[ 1 ], values[ 1 ] );
+    assert_same( decoded[ 2 ], values[ 2 ] );
+    assert_same( decoded[ 3 ], values[ 3 ] );
+    assert_same( decoded[ 4 ], values[ 4 ] );
+    assert_same( decoded[ 5 ], values[ 5 ] );
+    assert_same( decoded[ 6 ], values[ 6 ] );
+    assert_same( decoded[ 7 ], values[ 7 ] );
+}
+
+static void encode_narrow_to_wide_k1()
+{
+    const std::array< uint8_t, 8 > values = { 0x00u, 0xFFu, 0x00u, 0xFFu,
+                                              0x00u, 0xFFu, 0x00u, 0xFFu };
+    std::vector< uint64_t > result;
+
+    pg::golomb::encode< uint64_t >( values.cbegin(), values.cend(), std::back_inserter( result ), 1u );
+
+    assert_same( result.size(), 2u );
+    assert_same( result[ 0 ], 0x0106041810604080 );
+    assert_same( result[ 1 ], 0x0000000000000001 );
+
+    std::vector< uint8_t > decoded;
+
+    pg::golomb::decode< uint8_t >( result.cbegin(), result.cend(), std::back_inserter( decoded ), 1u );
+
+    assert_same( decoded.size(), values.size() );
+    assert_same( decoded[ 0 ], values[ 0 ] );
+    assert_same( decoded[ 1 ], values[ 1 ] );
+    assert_same( decoded[ 2 ], values[ 2 ] );
+    assert_same( decoded[ 3 ], values[ 3 ] );
+    assert_same( decoded[ 4 ], values[ 4 ] );
+    assert_same( decoded[ 5 ], values[ 5 ] );
+    assert_same( decoded[ 6 ], values[ 6 ] );
+    assert_same( decoded[ 7 ], values[ 7 ] );
 }
 
 static void encode_wide_to_narrow_k0()
@@ -172,7 +282,7 @@ static void decode_narrow_to_wide_k0()
 
 static void decode_wide_to_narrow_k0()
 {
-    const std::array< uint32_t, 1 > values = { 0x80400000u };
+    const std::array< uint32_t, 1 > values = { 0x00004080u };
     std::vector< uint8_t >          result;
 
     pg::golomb::decode< uint8_t >( values.cbegin(), values.cend(), std::back_inserter( result ) );
@@ -185,7 +295,7 @@ static void decode_wide_to_narrow_k0()
 static void readme()
 {
     {
-        const uint8_t values[ 8 ] = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
+        const std::array< uint8_t, 8 > values = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
 
         // Encoding using a range as input
         std::vector< uint8_t > out_range;
@@ -204,7 +314,7 @@ static void readme()
         assert_true( std::ranges::equal( out_range, out_iter ) );
     }
     {
-        const uint8_t data[ 5 ] = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
+        const std::array< uint8_t, 5 > data = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
 
         // Decoding using a ranges as input
         std::vector< int16_t > values_range;
@@ -230,8 +340,10 @@ int main()
     encode_overflow_k0();
     encode_overflow_k2();
     encode_narrow_to_wide_k0();
+    encode_narrow_to_wide_k4();
     encode_wide_to_narrow_k0();
     encode_wide_to_narrow_k3();
+    encode_narrow_to_wide_k1();
     decode_all_zeros_k0();
     decode_overflow_k0();
     decode_overflow_k2();

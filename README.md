@@ -37,7 +37,7 @@ Besides the following examples you can take a peek in the sources of the [test p
 ### Encode
 
 ```c++
-const uint8_t values[ 8 ] = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
+const std::array< uint8_t, 8 > values = { 0u, 1u, 2u, 3u, 4u, 255u, 0u, 2u };
 
 // Encode using a range as input
 std::vector< uint8_t > out_range;
@@ -57,9 +57,9 @@ assert( out_iter.size() == 5 );
 ### Decode
 
 ```c++
-const uint8_t data[ 5 ] = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
+const std::array< uint8_t, 5 > data = { 0xA6u, 0x42u, 0x80u, 0x40u, 0x2Cu };
 
-// Decode using a ranges as input
+// Decode using a range as input
 std::vector< int16_t > values_range;
 
 pg::golomb::decode< int16_t >( data, std::back_inserter( values_range ) );
@@ -76,8 +76,8 @@ assert( values_iter.size() == 8 );
 
 ## Endianess
 
-The golomb library do not handle endianess in a specific way; this depends on the platform.  
-Use `uint8_t` for golomb encoded input and output data when cross-platform data exchange is required.
+This library encodes golomb data as __big__ endian.  
+Values fed to the encoder or outputed by the decoder are in the platform's native endianess.
 
 ## golomb utility
 

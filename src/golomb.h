@@ -28,6 +28,7 @@
 #include <limits>
 #include <iterator>
 #include <bit>
+#include <algorithm>
 #include <type_traits>
 
 
@@ -53,9 +54,67 @@ template< typename InputRange >
 concept unsigned_integral_input_range = std::unsigned_integral< std::ranges::range_value_t< InputRange > > &&
                                         std::ranges::input_range< InputRange >;
 
+template< typename InputValueT, typename OutputDataT >
+concept overruns_buffer = std::numeric_limits< typename std::make_unsigned< InputValueT >::type >::digits >=
+                          std::numeric_limits< OutputDataT >::digits;
+
+template< std::integral ValueT >
+[[nodiscard]] constexpr ValueT make_mask( size_t n_bits )
+{
+    if( n_bits )
+    {
+        constexpr auto max_digits = std::numeric_limits< ValueT >::digits;
+
+        return static_cast< ValueT >( -1 ) >> ( max_digits - n_bits );
+    }
+
+    return {};
+}
+
+template< std::unsigned_integral DataT >
+[[nodiscard]] constexpr auto fix_endian( DataT data )
+{
+    static_assert( std::endian::native == std::endian::big ||
+                   std::endian::native == std::endian::little );
+
+    if constexpr( std::endian::native == std::endian::big ||
+                  sizeof( DataT ) == 1 )
+    {
+        return data;
+    }
+    else
+    {
+#if defined( __cpp_lib_byteswap )
+        return std::byteswap( data );
+#else
+        using RawDataT = std::array< uint8_t, sizeof( DataT ) >;
+
+        auto raw_data = reinterpret_cast< RawDataT* >( &data );
+
+        std::ranges::reverse( *raw_data );
+
+        return data;
+#endif
+    }
+}
+
+template< typename OutputIt, std::unsigned_integral OutputDataT >
+requires std::output_iterator< OutputIt, OutputDataT >
+constexpr void write( OutputIt& output, OutputDataT data )
+{
+    *output++ = fix_endian( data );
+}
+
+template< detail::unsigned_integral_input_iterator InputIt >
+[[nodiscard]] constexpr auto read( InputIt& input )
+{
+    return fix_endian( *input++ );
+}
+
+}
 
 template< std::signed_integral SignedT >
-auto to_unsigned( SignedT s )
+[[nodiscard]] constexpr auto to_unsigned( SignedT s )
 {
     using UnsignedT = typename std::make_unsigned< SignedT >::type;
 
@@ -68,13 +127,13 @@ auto to_unsigned( SignedT s )
 }
 
 template< std::unsigned_integral UnsignedT >
-auto to_unsigned( UnsignedT u )
+[[nodiscard]] constexpr auto to_unsigned( UnsignedT u )
 {
     return u;
 }
 
 template< std::signed_integral SignedT >
-auto to_integral( std::unsigned_integral auto u )
+[[nodiscard]] constexpr auto to_integral( std::unsigned_integral auto u )
 {
     using UnsignedT = typename std::make_unsigned< SignedT >::type;
 
@@ -88,12 +147,11 @@ auto to_integral( std::unsigned_integral auto u )
 }
 
 template< std::unsigned_integral UnsignedT >
-auto to_integral( std::unsigned_integral auto u )
+[[nodiscard]] constexpr auto to_integral( std::unsigned_integral auto u )
 {
     return u;
 }
 
-}
 
 /**
  * \brief Golomb encoder object that encodes integral values and write them to an output
@@ -101,8 +159,8 @@ auto to_integral( std::unsigned_integral auto u )
  * The encoded values have a variable number of bits that are buffered and packed.
  * The buffer size is equal to the \em OutputDataT and written to the output when all bits are set by the encoder.
  * 
- * \tparam OutputIt    The type of the output iterator to which the encoded values are written
- * \tparam OutputDataT An unsigned integral type which is used for the data that is written to output
+ * \tparam OutputIt     The type of the output iterator to which the encoded values are written
+ * \tparam OutputDataT  An unsigned integral type which is used for the data that is written to output
  */
 template< typename OutputIt, std::unsigned_integral OutputDataT = uint8_t >
 requires std::output_iterator< OutputIt, OutputDataT >
@@ -110,127 +168,184 @@ class encoder
 {
     static constexpr auto output_digits = std::numeric_limits< OutputDataT >::digits;
 
-    OutputIt          output;
-    const size_t      k;
-    const OutputDataT base;
-    const size_t      zeros_threshold;
+    OutputIt    output;
+    OutputDataT buffer;
+    int         buffer_bits_free;
 
-    OutputDataT encoded;
-    size_t      encoded_count;
+    template< std::integral InputValueT, size_t K >
+    constexpr OutputIt push_switch( InputValueT x, size_t k )
+    {
+        using UnsignedInputValueT = std::make_unsigned< InputValueT >::type;
+
+        constexpr auto max_K = std::numeric_limits< UnsignedInputValueT >::digits - 1;
+        if constexpr( K < max_K )
+        {
+            if( k == K )
+            {
+                return push< K, InputValueT >( x );
+            }
+
+            return push_switch< InputValueT, K + 1u >( x, k );
+        }
+        else
+        {
+            return push< max_K >( x );
+        }
+    }
 
 public:
     /**
      * \brief Construct the encoder
      *
-     * \param output Output iterator to which the encoded values are written
-     * \param k      The order the values are encoded
-     * 
+     * \param output  Output iterator to which the encoded values are written
+     *
      * \note Be sure that `output` can buffer the resulting encoded bitstream.
      */
-    encoder( OutputIt output, size_t k = 0u ) noexcept
+    constexpr encoder( OutputIt output )
         : output( output )
-        , k( k )
-        , base( 1u << k )
-        , zeros_threshold( 1 + k )
-        , encoded( static_cast< OutputDataT>( 0u ) )
-        , encoded_count( 0 )
+        , buffer( static_cast< OutputDataT>( 0u ) )
+        , buffer_bits_free( output_digits )
     {}
 
-    ~encoder()
-    {
-        flush();
-    }
-    
     /**
      * \brief Encodes the given value and writes the resulting bitstream to output
      *
-     * \param x The value to encode
-     * 
+     * \tparam k            Golomb order in which \em x will be encoded
+     * \tparam InputValueT  Integral type of value \em x
+     *
+     * \param x  The value to encode
+     *
      * \return The output iterator one past the data that has been written to the output
      */
-    template< std::integral InputValueT >
-    OutputIt push( InputValueT x )
+    template< size_t k, typename InputValueT >
+    requires std::integral< InputValueT > && detail::overruns_buffer< InputValueT, OutputDataT >
+    constexpr OutputIt push( InputValueT value )
     {
         using UnsignedInputValueT = typename std::make_unsigned< InputValueT >::type;
-        using CommonT             = typename std::common_type< UnsignedInputValueT, OutputDataT >::type;
 
-        static constexpr auto input_digits  = std::numeric_limits< UnsignedInputValueT >::digits;
-        static constexpr auto input_mask    = std::numeric_limits< UnsignedInputValueT >::max();
+        constexpr auto base         = static_cast< UnsignedInputValueT >( 1u ) << k;
+        constexpr auto value_digits = std::numeric_limits< UnsignedInputValueT >::digits;
 
-        const auto overflow_threshold = input_mask - static_cast< OutputDataT >( base );
-        const auto max_zeros          = input_digits - k;
+        const auto unsigned_value = to_unsigned( value );
+        auto       data           = static_cast< UnsignedInputValueT >( unsigned_value + base );
 
-        const auto   u         = detail::to_unsigned( x );
-        const bool   overflow  = u > overflow_threshold;
-        const auto   value     = static_cast< UnsignedInputValueT >( u + base );
-        const size_t bit_width = static_cast< int >( std::bit_width( value ) ); // cast is a workaround for unresolved defect report in GCC/libc++
-        const size_t width     = overflow ? input_digits : bit_width;
-        const size_t zeros     = overflow ? max_zeros : width - zeros_threshold;
+        const auto overflowed         = data < unsigned_value;
+        auto       data_bits_to_write = overflowed ? value_digits : std::bit_width( data );
+        auto       zeros              = data_bits_to_write - static_cast< int >( overflowed ? k : k + 1 );
 
-        encoded_count += zeros;
-        for( ; encoded_count >= output_digits ; encoded_count -= output_digits )
+        while( zeros >= buffer_bits_free )
         {
-            *output++ = encoded;
-            encoded   = 0u;
+            detail::write( output, buffer );
+            buffer            = {};
+            zeros            -= buffer_bits_free;
+            buffer_bits_free  = output_digits;
+        }
+        buffer_bits_free -= zeros;
+
+        if( overflowed )
+        {
+            --buffer_bits_free;
+            buffer |= static_cast< OutputDataT >( 1u ) << buffer_bits_free;
         }
 
-        if( overflow )
+        while( data_bits_to_write > 0 )
         {
-            const auto shift = output_digits - ( 1u + encoded_count );
-
-            if( shift < output_digits )
+            if( buffer_bits_free == 0 )
             {
-
-                encoded |= static_cast< CommonT >( 1u ) << shift;
-                if( ++encoded_count == output_digits )
-                {
-                    *output++     = encoded;
-                    encoded       = 0u;
-                    encoded_count = 0;
-                }
-            }
-        }
-
-        for( auto remaining = width ; remaining > 0 ; )
-        {
-            const auto mask = input_mask >> ( input_digits - remaining );
-            const auto data = static_cast< UnsignedInputValueT >( value & mask );
-            const auto free = output_digits - encoded_count;
-
-            if( remaining >= free )
-            {
-                const auto shift = remaining - free;
-
-                *output++     = encoded | static_cast< OutputDataT >( data >> shift );
-                encoded       = 0u;
-                encoded_count = 0u;
-                remaining     = shift;
+                detail::write( output, buffer );
+                buffer           = {};
+                buffer_bits_free = output_digits;
             }
             else
             {
-                const auto shift = free - remaining;
+                if( data_bits_to_write < buffer_bits_free )
+                {
+                    const auto shift = buffer_bits_free - data_bits_to_write;
 
-                encoded       |= data << shift;
-                encoded_count += remaining;
-                remaining      = 0;
+                    buffer             |= data << shift;
+                    buffer_bits_free   -= data_bits_to_write;
+                    data_bits_to_write  = {};
+                }
+                else
+                {
+                    const auto shift = data_bits_to_write - buffer_bits_free;
+                    const auto mask  = detail::make_mask< UnsignedInputValueT >( buffer_bits_free ) << shift;
+                    const auto chunk = data & mask;
+
+                    buffer             |= chunk >> shift;
+                    data_bits_to_write -= buffer_bits_free;
+                    buffer_bits_free    = {};
+                    data               &= ~mask;
+                }
             }
         }
 
         return output;
     }
-    
+
+    /**
+     * \overload OutputIt push( InputValueT value )
+     */
+    template< size_t k, typename InputValueT >
+    requires std::integral< InputValueT > && ( !detail::overruns_buffer< InputValueT, OutputDataT > )
+    constexpr OutputIt push( InputValueT value )
+    {
+        constexpr auto base = static_cast< OutputDataT >( 1u ) << k;
+
+        const auto unsigned_value     = to_unsigned( value );
+        auto       data               = static_cast< OutputDataT >( unsigned_value + base );
+        auto       data_bits_to_write = std::bit_width( data );
+        auto       zeros              = data_bits_to_write - static_cast< int >( k + 1 );
+
+        if( zeros >= buffer_bits_free )
+        {
+            detail::write( output, buffer );
+            buffer            = {};
+            zeros            -= buffer_bits_free;
+            buffer_bits_free  = output_digits;
+        }
+        buffer_bits_free -= zeros;
+
+        if( data_bits_to_write >= buffer_bits_free )
+        {
+            const auto shift  = data_bits_to_write - buffer_bits_free;
+            const auto shift2 = output_digits - shift;
+
+            buffer |= data >> shift;
+            detail::write( output, buffer );
+
+            buffer           = data << shift2;
+            buffer_bits_free = shift2;
+        }
+        else
+        {
+            const auto shift = buffer_bits_free - data_bits_to_write;
+
+            buffer             |= data << shift;
+            buffer_bits_free   -= data_bits_to_write;
+        }
+
+        return output;
+    }
+
+    template< std::integral InputValueT >
+    constexpr OutputIt push( InputValueT x, size_t k )
+    {
+        return push_switch< InputValueT, 0u >( x, k );
+    }
+
     /**
      * \brief Flushes the internal bitbuffer to output
      *
      * \return The output iterator one past the data that has been flushed to the output
      */
-    OutputIt flush()
+    constexpr OutputIt flush()
     {
-        if( encoded_count )
+        if( buffer_bits_free < output_digits )
         {
-            *output++     = encoded;
-            encoded_count = 0u;
-            encoded       = 0u;
+            detail::write( output, buffer );
+            buffer           = {};
+            buffer_bits_free = output_digits;
         }
 
         return output;
@@ -255,18 +370,18 @@ constexpr auto encode( InputIt input, InputIt last, OutputIt output, size_t k = 
 {
     using ValueT = typename std::iterator_traits< InputIt >::value_type;
 
-    encoder< OutputIt, OutputDataT > e( output, k );
+    encoder< OutputIt, OutputDataT > e( output );
 
     while( input != last )
     {
-        e.push( static_cast< ValueT >( *input++ ) );
+        e.push( static_cast< ValueT >( *input++ ), k );
     }
 
     return e.flush();
 }
 
 /**
- * \overload encode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
+ * \overload encode( InputIt input, InputIt last, OutputIt output, size_t k = {} )
  * 
  * \param input  A range to read integral values from that are encoded
  * \param output The output iterator to which the ecoded values are written
@@ -276,19 +391,37 @@ template< std::unsigned_integral OutputDataT = uint8_t,
           detail::integral_input_range InputRangeT,
           typename OutputIt >
 requires std::output_iterator< OutputIt, OutputDataT >
-auto encode( const InputRangeT & input, OutputIt output, size_t k = 0u )
+constexpr auto encode( InputRangeT input, OutputIt output, size_t k = {} )
 {
     using InputValueT = std::ranges::range_value_t< InputRangeT >;
 
-    encoder< OutputIt, OutputDataT > e( output, k );
+    encoder< OutputIt, OutputDataT > e( output );
 
     for( const auto& value : input )
     {
-        e.push( static_cast< InputValueT >( value ) );
+        e.push( static_cast< InputValueT >( value ), k );
     }
 
     return e.flush();
 }
+
+/**
+ * \brief Golomb decoder_result object that holds the decoded value and/or the decoder status
+ */
+template< std::integral OutputValueT >
+struct decoder_result
+{
+    enum status
+    {
+        success,        ///< Decoded successfuly; value is valid
+        done,           ///< No more data available to decode
+        zero_overflow,  ///< Exceeded leading zeros for \em OutputVaueT and given order;
+                        // value holds the number of zeros (clipped at max for OutputValueT).
+    };
+
+    OutputValueT value;
+    status       status;
+};
 
 /**
  * \brief Golomb decoder object that decodes golomb data and write its values to an output
@@ -301,127 +434,189 @@ auto encode( const InputRangeT & input, OutputIt output, size_t k = 0u )
  *
  * \note Be sure the values encoded in the golomb data fits within value range of \em OutputDataT.
  */
-template< typename OutputIt, std::integral OutputValueT >
+template< detail::unsigned_integral_input_iterator InputIt >
 class decoder
 {
-    using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
+    using InputDataT = typename std::iterator_traits< InputIt >::value_type;
 
-    static constexpr auto output_digits = std::numeric_limits< UnsignedOutputValueT >::digits;
+    static constexpr auto data_digits = std::numeric_limits< InputDataT >::digits;
+    static constexpr auto data_mask   = std::numeric_limits< InputDataT >::max();
 
-    OutputIt                   output;
-    const size_t               k;
-    const UnsignedOutputValueT base;
-    const size_t               initial_digits;
-    
-    UnsignedOutputValueT output_buffer;
-    size_t               digits;
-    
-    enum class scan_state { scan_zeros, decode } state = scan_state::scan_zeros;
+    InputIt    input;
+    InputIt    input_end;
+    size_t     data_bits_remaining;
+    InputDataT data;
+
+    template< std::integral OutputValueT, size_t K = {} >
+    [[nodiscard]] decoder_result< OutputValueT > constexpr pull_switch( size_t k )
+    {
+        using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
+
+        constexpr auto max_K = std::numeric_limits< UnsignedOutputValueT >::digits - 1;
+        if constexpr ( K < max_K )
+        {
+            if( k == K )
+            {
+                return pull< OutputValueT, K >();
+            }
+
+            return pull_switch< OutputValueT, K + 1u >( k );
+        }
+        else
+        {
+            return pull< OutputValueT, max_K >();
+        }
+    }
+
+    [[nodiscard]] constexpr bool check_data()
+    {
+        if( data_bits_remaining )
+        {
+            return true;
+        }
+        else if( input != input_end )
+        {
+            data                = detail::read( input );
+            data_bits_remaining = data_digits;
+
+            return true;
+        }
+
+        return false;
+    }
 
 public:
     /**
      * \brief Construct the decoder
      *
-     * \param output Output iterator to which the decoded values are written
-     * \param k      The order the values from the golomb data are decoded
-     * 
-     * \note Be sure that `output` can buffer the resulting encoded bitstream.
-     * 
-     * \note You must decode the binary golomb data with the same order as it is encoded.
+     * \param input      Begin iterator of the decoder's input containing encoded golomb data.
+     * \param input_end  End iterator that marks the end of the input data.
      */
-    decoder( OutputIt output, size_t k = 0u )
-        : output( output )
-        , k( k )
-        , base( static_cast< UnsignedOutputValueT >( 1u ) << k )
-        , initial_digits( 1 + static_cast< int >( k ) )
-        , output_buffer( 0u )
-        , digits( initial_digits )
-        , state( scan_state::scan_zeros )
+    [[nodiscard]] constexpr decoder( InputIt input_, InputIt input_end_ )
+        : input( input_ )
+        , input_end( input_end_ )
+        , data_bits_remaining( input == input_end ? 0u : data_digits )
+        , data( input == input_end ? 0u : detail::read( input ) )
     {}
-    
+
     /**
-     * \brief Feeds encoded golomb data and outputs the values the data holds
+     * \brief Reads data from its input and returns a decoded result
      *
-     * Remaining bits are buffered and processed with the next call of this function.
+     * \tparam OutputValueT  Type of the value that is pulled
+     * \tparam k             Order of the golomb data to decode for the value that is pulled
      *
-     * \param data Binary golomb data
-     * 
-     * \return The output iterator one past the values that has been written to the output
+     * \note \em k should be smaler than the \em OutputValueT's maximum number of binary digits.
+     *
+     * \return A \em decoder_result struct containing the decoded value and/or decoder status
      */
-    template< std::unsigned_integral InputDataT >
-    OutputIt push( InputDataT data )
+    template< std::integral OutputValueT, size_t k = {} >
+    [[nodiscard]] decoder_result< OutputValueT > constexpr pull()
     {
-        using CommonT = typename std::common_type< InputDataT, UnsignedOutputValueT >::type;
+        using ResultT              = decoder_result< OutputValueT >;
+        using UnsignedOutputValueT = typename std::make_unsigned< OutputValueT >::type;
+        using CommonT              = typename std::common_type< InputDataT, UnsignedOutputValueT >::type;
 
-        static constexpr auto data_digits  = std::numeric_limits< InputDataT >::digits;
-        static constexpr auto data_mask    = std::numeric_limits< InputDataT >::max();
+        constexpr auto max_value_digits = std::numeric_limits< UnsignedOutputValueT >::digits;
 
-        size_t data_consumed = 0;
-        while( data_consumed != data_digits )
+        static_assert( k < max_value_digits );
+
+        // Scan zeros
+        size_t zeros = {};
+        do
         {
-            if( state == scan_state::scan_zeros )
+            if( !check_data() )
             {
-                const auto n = std::countl_zero( data );
-
-                digits        += n - data_consumed;
-                data_consumed  = n;
-
-                if( data )
-                {
-                    state = scan_state::decode;
-                }
+                return { {}, ResultT::done };
             }
-            else    // decode
-            {
-                const auto input_remaining = data_digits - data_consumed;
 
-                if( digits >= input_remaining )
-                {
-                    const auto shift = digits - input_remaining;
+            const auto bit_width = std::bit_width( data );
+            const auto counted   = data_bits_remaining - bit_width;
 
-                    if( shift < output_digits )
-                    {
-                        output_buffer |= static_cast< CommonT >( data ) << shift;
-                    }
+            zeros               += counted;
+            data_bits_remaining  = bit_width;
+        }
+        while( !data );
 
-                    data_consumed = data_digits;
-                    digits       -= input_remaining;
-                }
-                else
-                {
-                    const auto shift = input_remaining - digits;
+        // Skip and clear the '1' that followed the zeros
+        data_bits_remaining -= 1;
+        data                &= ~( static_cast< InputDataT >( 1u ) << data_bits_remaining );
 
-                    output_buffer |= data >> shift;
-                    data_consumed += digits;
-                    data          &= data_mask >> data_consumed;
-                    digits         = 0u;
-                }
+        size_t digits = zeros + k;
+        if( digits > max_value_digits )
+        {
+            constexpr auto max_output_value = std::numeric_limits< OutputValueT >::max();
+            const auto     zeros_clamped    = std::min( static_cast< size_t >( max_output_value ), zeros );
 
-                if( digits == 0u )
-                {
-                    *output++     = detail::to_integral< OutputValueT >( static_cast< UnsignedOutputValueT >( output_buffer - base ) );
-                    output_buffer = 0u;
-                    digits        = initial_digits;
-                    state         = scan_state::scan_zeros;
-                }
-            }
+            return { static_cast< OutputValueT >( zeros_clamped ), ResultT::zero_overflow };
         }
 
-        return output;
+        // Read value
+        UnsignedOutputValueT buffer = {};
+        do
+        {
+            if( digits && !check_data() )
+            {
+                return { {}, ResultT::done };
+            }
+
+            if( digits >= data_bits_remaining )
+            {
+                const auto shift = digits - data_bits_remaining;
+
+                buffer |= static_cast< CommonT >( data ) << shift;
+
+                digits              -= data_bits_remaining;
+                data_bits_remaining  = {};
+            }
+            else
+            {
+                const auto shift = data_bits_remaining - digits;
+
+                buffer              |= data >> shift;
+                data_bits_remaining -= digits;
+                digits               = {};
+
+                const auto mask = detail::make_mask< InputDataT >( data_bits_remaining );
+
+                data &= mask;
+            }
+        }
+        while( digits );
+
+        const auto base           = detail::make_mask< UnsignedOutputValueT >( zeros ) << k;
+        const auto buffered_value = static_cast< UnsignedOutputValueT >( buffer + base );
+        const auto value          = to_integral< OutputValueT >( buffered_value );
+
+        return { value, ResultT::success };
     }
 
     /**
-     * \brief Resets the decoder
+     * \overload pull() noexcept
      *
-     * \return The output iterator one past the last written value
+     * \tparam  OutputValueT  Type of the value that is pulled
+     * 
+     * \param k  Order of the golomb data to decode for the value that is pulled
+     *
+     * \note \em k should be smaler than the \em OutputValueT's maximum number of binary digits.
+     *
+     * \return A \em decoder_result struct containing the decoded value and/or decoder status
      */
-    OutputIt flush()
+    template< std::integral OutputValueT >
+    [[nodiscard]] constexpr auto pull( size_t k )
     {
-        output_buffer = 0u;
-        digits        = initial_digits;
-        state         = scan_state::scan_zeros;
-        
-        return output;
+        return pull_switch< OutputValueT >( k );
+    }
+
+    /**
+     * \brief Checks if the decoder has ready data to decode
+     *
+     * \return True when the decoder has data buffered or has not yet reached the end of its input
+     *
+     * \note The function returns true in case input contains but which is not enough to decode a valid value.
+     */
+    [[nodiscard]] constexpr bool has_data() const
+    {
+        return data_bits_remaining || input != input_end;
     }
 };
 
@@ -430,10 +625,10 @@ public:
  *
  * \tparam OutputDataT The integral type of the decoded values
  *
- * \param input  The input iterator from which the read binary golomb data is read from
- * \param last   The iterator that marks the end of input range
- * \param output The output iterator to which the decoded values are written
- * \param k      The order the values in the golomb data are encoded
+ * \param input   The input iterator from which the read binary golomb data is read from
+ * \param last    The iterator that marks the end of input range
+ * \param output  The output iterator to which the decoded values are written
+ * \param k       The order the values in the golomb data are encoded
  *
  * \note Be sure the values encoded in the golomb data fits within value range of \em OutputDataT.
  *
@@ -446,20 +641,24 @@ template< std::integral OutputValueT,
           detail::unsigned_integral_input_iterator InputIt,
           typename OutputIt >
 requires std::output_iterator< OutputIt , OutputValueT >
-constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
+constexpr auto decode( InputIt input, InputIt last, OutputIt output, size_t k = {} )
 {
-    decoder< OutputIt, OutputValueT > d( output, k );
+    decoder d( input, last );
 
-    while( input != last )
+    while( d.has_data() )
     {
-        d.push( *input++ );
+        const auto [ value, status ] = d.template pull< OutputValueT >( k );
+        if( status == decoder_result< OutputValueT >::success )
+        {
+            *output++ = value;
+        }
     }
 
-    return d.flush();
+    return output;
 }
 
 /**
- * \overload decode( InputIt input, InputIt last, OutputIt output, size_t k = 0u )
+ * \overload decode( InputIt input, InputIt last, OutputIt output, size_t k = {} )
  *
  * \tparam OutputDataT The integral type of the decoded values
  *
@@ -471,16 +670,9 @@ template< std::integral OutputValueT,
           detail::unsigned_integral_input_range InputRangeT,
           typename OutputIt >
 requires std::output_iterator< OutputIt , OutputValueT >
-constexpr auto decode( InputRangeT && input, OutputIt output, size_t k = 0u )
+constexpr auto decode( InputRangeT input, OutputIt output, size_t k = 0u )
 {
-    decoder< OutputIt, OutputValueT > d( output, k );
-
-    for( const auto& value : input )
-    {
-        d.push( value );
-    }
-
-    return d.flush();
+    return decode< OutputValueT >( std::begin( input ), std::end( input ), output, k );
 }
 
 }
